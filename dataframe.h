@@ -35,6 +35,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <vector>
 
 #define max_number_bit 50
 
@@ -213,6 +214,8 @@ namespace frame
   class Dataframe
   {
   public:
+    using DataType = T;
+
     class ColumnArray
     {
       typedef typename std::vector<T>::const_iterator const_iter;
@@ -249,7 +252,7 @@ namespace frame
         array->insert(position, start, end);
       }
 
-      [[nodiscard]] unsigned long long int size() const
+      [[nodiscard]] size_t size() const
       {
         if (array == nullptr)
           return 0;
@@ -339,7 +342,7 @@ namespace frame
         return result;
       }
 
-      const T &operator[](unsigned long long int i) const
+      const T &operator[](size_t i) const
       {
         if (i < array->size())
           return (*array)[i];
@@ -352,7 +355,7 @@ namespace frame
         }
       }
 
-      T &operator[](unsigned long long int i)
+      T &operator[](size_t i)
       {
         if (i < array->size())
           return (*array)[i];
@@ -411,7 +414,7 @@ namespace frame
         array->insert(position, start, end);
       }
 
-      [[nodiscard]] unsigned long long int size() const
+      [[nodiscard]] size_t size() const
       {
         if (array == nullptr)
           return 0;
@@ -491,7 +494,7 @@ namespace frame
 
       void push_back(T *item) { array->emplace_back(item); }
 
-      const T &operator[](unsigned long long int i) const
+      const T &operator[](size_t i) const
       {
         if (i < array->size())
           return *((*array)[i]);
@@ -504,7 +507,7 @@ namespace frame
         }
       }
 
-      T &operator[](unsigned long long int i)
+      T &operator[](size_t i)
       {
         if (i < array->size())
           return *((*array)[i]);
@@ -543,12 +546,12 @@ namespace frame
     }
 
     // constructed by width and length
-    explicit Dataframe(unsigned long long int _width = 0,
+    explicit Dataframe(size_t _width = 0,
                        std::string name = "Dataframe")
         : Dataframe_name(std::move(name)), width(_width), length(0)
     {
       string_vector temp;
-      for (unsigned long long int i = 0; i < _width; i++)
+      for (size_t i = 0; i < _width; i++)
         temp.emplace_back(std::to_string(i));
       column_paste(temp);
     }
@@ -595,9 +598,9 @@ namespace frame
       }
     }
 
-    static Dataframe create_empty_dataframe(size_t length)
+    static Dataframe<T> create_empty_dataframe(size_t length)
     {
-      Dataframe df;
+      Dataframe<T> df;
       df.length = length;
       return df;
     }
@@ -654,20 +657,21 @@ namespace frame
         return false;
     }
 
-    // create a row_index column a this dataframe
+    // create a row_index column for this dataframe
     void create_row_index()
     {
       if (!contain("row_index"))
       {
         ++width;
-        column.emplace_back("row_index");
+        column.push_back("row_index");
         index.emplace("row_index", index.size());
-        std::vector<int> row_index_values;
+        std::vector<T> row_index_values;
         row_index_values.reserve(length);
-        for (unsigned long long int i = 0; i < length; ++i) {
-          row_index_values.emplace_back(i);
+        for (long int i = 0; i < length; ++i) {
+          T value = i;
+          row_index_values.push_back(value);
         }
-        matrix.emplace_back(new ColumnArray(row_index_values));
+        matrix.push_back(new ColumnArray(row_index_values));
       }
     }
 
@@ -779,7 +783,7 @@ namespace frame
     }
 
     // remove one row from index
-    bool remove(unsigned long long int i)
+    bool remove(size_t i)
     {
       if (i < length)
       {
@@ -797,7 +801,7 @@ namespace frame
     }
 
     // get one row data from index of row
-    RowArray operator[](unsigned long long int i)
+    RowArray operator[](size_t i)
     {
       if (i < length)
       {
@@ -818,7 +822,7 @@ namespace frame
     }
 
     // get one row data from index of row
-    RowArray operator[](unsigned long long int i) const
+    RowArray operator[](size_t i) const
     {
       if (i < length)
       {
@@ -863,7 +867,7 @@ namespace frame
     }
 
     // get one column data from index of column
-    const ColumnArray &operator()(unsigned long long int i) const
+    const ColumnArray &operator()(size_t i) const
     {
       if (i < matrix.size())
         return *(matrix[i]);
@@ -874,7 +878,7 @@ namespace frame
     }
 
     // get one column data from index of column
-    ColumnArray &operator()(unsigned long long int i)
+    ColumnArray &operator()(size_t i)
     {
       if (i < matrix.size())
         return *(matrix[i]);
@@ -890,7 +894,7 @@ namespace frame
       if (array.size() == width)
       {
         length++;
-        for (unsigned long long int i = 0; i < array.size(); ++i)
+        for (size_t i = 0; i < array.size(); ++i)
         {
           matrix[i]->emplace_back(array[i]);
         }
@@ -906,7 +910,7 @@ namespace frame
       if (array.size() == width)
       {
         length++;
-        for (unsigned long long int i = 0; i < array.size(); ++i)
+        for (size_t i = 0; i < array.size(); ++i)
         {
           matrix[i]->emplace_back(std::move(array[i]));
         }
@@ -916,12 +920,12 @@ namespace frame
         return false;
     }
 
-    [[nodiscard]] const unsigned long long int &num_cols() const
+    [[nodiscard]] const size_t &num_cols() const
     {
       return width;
     }
 
-    [[nodiscard]] const unsigned long long int &num_rows() const { return length; }
+    [[nodiscard]] const size_t &num_rows() const { return length; }
 
     // concat double Dataframe object vertically
     bool concat_line(const Dataframe &dataframe)
@@ -929,7 +933,7 @@ namespace frame
       if (dataframe.width == width)
       {
         length += dataframe.length;
-        for (unsigned long long int i = 0; i < width; ++i)
+        for (size_t i = 0; i < width; ++i)
         {
           matrix[i]->insert(matrix[i]->end(), dataframe(i).begin(),
                             dataframe(i).end());
@@ -941,15 +945,15 @@ namespace frame
     }
 
     // partition the Dataframe in n parts
-    std::vector<Dataframe> partition(unsigned long long int n)
+    std::vector<Dataframe> partition(size_t n)
     {
       std::vector<Dataframe> dataframes;
       if (n > 0)
       {
-        unsigned long long int part = length / n;
-        unsigned long long int last = length % n;
-        unsigned long long int start = 0;
-        for (unsigned long long int i = 0; i < n; ++i)
+        size_t part = length / n;
+        size_t last = length % n;
+        size_t start = 0;
+        for (size_t i = 0; i < n; ++i)
         {
           Dataframe dataframe;
           size_t dataframe_length;
@@ -962,7 +966,7 @@ namespace frame
             dataframe_length = part;
           }
           dataframe.column_paste(this->get_column_str());
-          for (unsigned long long int j = start; j < start + dataframe_length;
+          for (size_t j = start; j < start + dataframe_length;
                ++j)
           {
             dataframe.append(this->get_row(j).get_std_vector());
@@ -979,10 +983,10 @@ namespace frame
     {
       Dataframe dataframe;
       dataframe.column_paste(this->get_column_str());
-      auto index = this->index_of_column_name(column_name);
+      auto index = this->col_index(column_name);
       auto column = this->get_column(index);
-      std::vector<std::pair<T, unsigned long long int>> sort_vector;
-      for (unsigned long long int i = 0; i < column.size(); ++i)
+      std::vector<std::pair<T, size_t>> sort_vector;
+      for (size_t i = 0; i < column.size(); ++i)
       {
         sort_vector.emplace_back(column[i], i);
       }
@@ -1001,7 +1005,7 @@ namespace frame
     // compute min value of x column
     T min(std::string column_name)
     {
-      auto index = this->index_of_column_name(column_name);
+      auto index = this->col_index(column_name);
       auto column = this->get_column(index);
       return *std::min_element(column.begin(), column.end());
     }
@@ -1009,7 +1013,7 @@ namespace frame
     // compute max value of x column
     T max(std::string column_name)
     {
-      auto index = this->index_of_column_name(column_name);
+      auto index = this->col_index(column_name);
       auto column = this->get_column(index);
       return *std::max_element(column.begin(), column.end());
     }
@@ -1021,7 +1025,7 @@ namespace frame
       dataframe.length = length;
       for (auto &column_name : columns)
       {
-        auto index = this->index_of_column_name(column_name);
+        auto index = this->col_index(column_name);
         auto series = this->get_column(index);
         dataframe.insert(column_name, series);
       }
@@ -1034,13 +1038,13 @@ namespace frame
       Dataframe result;
       result.column_paste(this->get_column_str());
       result.column_paste(dataframe.get_column_str());
-      auto index_x = this->index_of_column_name(x);
-      auto index_y = dataframe.index_of_column_name(y);
+      auto index_x = this->col_index(x);
+      auto index_y = dataframe.col_index(y);
       auto column_x = this->get_column(index_x);
       auto column_y = dataframe.get_column(index_y);
-      for (unsigned long long int i = 0; i < column_x.size(); ++i)
+      for (size_t i = 0; i < column_x.size(); ++i)
       {
-        for (unsigned long long int j = 0; j < column_y.size(); ++j)
+        for (size_t j = 0; j < column_y.size(); ++j)
         {
           if (column_x[i] == column_y[j])
           {
@@ -1061,7 +1065,7 @@ namespace frame
       {
         std::string repeat;
         auto last_width = dataframe.width;
-        for (unsigned long long int i = 0; i < last_width; ++i)
+        for (size_t i = 0; i < last_width; ++i)
         {
           repeat = contain(dataframe.column[i]) ? "_r" : "";
           index.insert({dataframe.column[i] + repeat, index.size()});
@@ -1082,7 +1086,7 @@ namespace frame
       {
         std::string repeat;
         auto last_width = dataframe.width;
-        for (unsigned long long int i = 0; i < last_width; ++i)
+        for (size_t i = 0; i < last_width; ++i)
         {
           repeat = contain(dataframe.column[i]) ? "_r" : "";
           index.insert({dataframe.column[i] + repeat, index.size()});
@@ -1204,7 +1208,7 @@ namespace frame
         cout << *item << delimiter;
       }
       cout << column.back() << '\n';
-      for (unsigned long long int i = 0; i < num_rows(); ++i)
+      for (size_t i = 0; i < num_rows(); ++i)
       {
         for (auto array = matrix.begin(); array < matrix.end() - 1; ++array)
         {
@@ -1251,10 +1255,10 @@ namespace frame
     {
       std::ofstream cout =
           std::ofstream(filename.data(), std::ios::out | std::ios::trunc);
-      for (unsigned long long int i = 0; i < num_rows(); ++i)
+      for (size_t i = 0; i < num_rows(); ++i)
       {
         cout << "+1 ";
-        unsigned long long int j = 0;
+        size_t j = 0;
         for (auto array = matrix.begin(); array < matrix.end(); ++array)
         {
           cout << ++j << ":";
@@ -1292,49 +1296,54 @@ namespace frame
       cout << "length : " << dataframe.length << std::endl;
       cout.setf(std::ios::fixed, std::ios::floatfield);
       std::string separator = "\t";
-      for (unsigned long long int j = 0; j < dataframe.width; ++j)
+      for (size_t j = 0; j < dataframe.width; ++j)
       {
         cout << dataframe.column[j] << separator;
       }
       cout << std::endl;
-      for (unsigned long long int i = 0; i < dataframe.length; ++i)
+      for (size_t i = 0; i < dataframe.length; ++i)
       {
-        for (unsigned long long int j = 0; j < dataframe.width; ++j)
+        for (size_t j = 0; j < dataframe.width; ++j)
         {
-          std::visit(overloaded{
-                         [&cout](char value)
-                         { cout << '\'' << value << '\''; },
-                         [&cout](int value)
-                         {
-                           cout << std::setprecision(0) << value << 'i';
-                         },
-                         [&cout](long int value)
-                         {
-                           cout << std::setprecision(0) << value << 'i';
-                         },
-                         [&cout](float value)
-                         {
-                           if (std::abs(value - static_cast<int>(value)) > 1e-3)
-                             cout << std::setprecision(3) << value;
-                           else
-                             cout << std::setprecision(0) << value;
-                           cout << 'f';
-                         },
-                         [&cout](double value)
-                         {
-                           if (std::abs(value - static_cast<int>(value)) > 1e-3)
-                             cout << std::setprecision(3) << value;
-                           else
-                             cout << std::setprecision(0) << value;
-                           cout << 'f';
-                         },
-                         [&cout](const std::string &value)
-                         {
-                           cout << '"' << value << '"';
-                         },
-                     },
-                     user_variant((*dataframe.matrix[j])[i]));
-          cout << separator;
+          // check if T is variant type
+          if constexpr (std::is_arithmetic<T>::value) {
+            cout << '\'' << (*dataframe.matrix[j])[i] << '\'';
+          } else {
+            std::visit(overloaded{
+                           [&cout](char value)
+                           { cout << '\'' << value << '\''; },
+                           [&cout](int value)
+                           {
+                             cout << std::setprecision(0) << value << 'i';
+                           },
+                           [&cout](long int value)
+                           {
+                             cout << std::setprecision(0) << value << 'i';
+                           },
+                           [&cout](float value)
+                           {
+                             if (std::abs(value - static_cast<int>(value)) > 1e-3)
+                               cout << std::setprecision(3) << value;
+                             else
+                               cout << std::setprecision(0) << value;
+                             cout << 'f';
+                           },
+                           [&cout](double value)
+                           {
+                             if (std::abs(value - static_cast<int>(value)) > 1e-3)
+                               cout << std::setprecision(3) << value;
+                             else
+                               cout << std::setprecision(0) << value;
+                             cout << 'f';
+                           },
+                           [&cout](const std::string &value)
+                           {
+                             cout << '"' << value << '"';
+                           },
+                       },
+                       user_variant((*dataframe.matrix[j])[i]));
+            cout << separator;
+          }
         }
         cout << std::endl;
       }
@@ -1342,9 +1351,9 @@ namespace frame
     }
 
     // get string vector of columns
-    const std::vector<std::string> &get_column_str() const { return column; }
+    std::vector<std::string> get_column_str() const { return column; }
 
-    size_t index_of_column_name(std::string col) const
+    size_t col_index(std::string col) const
     {
       auto item = index.find(col);
       if (item != index.end())
@@ -1413,7 +1422,7 @@ namespace frame
 
     // get one column data from index of column
     [[maybe_unused]] const ColumnArray &
-    get_column(unsigned long long int i) const
+    get_column(size_t i) const
     {
       if (i < matrix.size())
         return *(matrix[i]);
@@ -1424,7 +1433,7 @@ namespace frame
     }
 
     // get one column data from index of column
-    [[maybe_unused]] ColumnArray &get_column(unsigned long long int i)
+    [[maybe_unused]] ColumnArray &get_column(size_t i)
     {
       if (i < matrix.size())
         return *(matrix[i]);
@@ -1435,7 +1444,7 @@ namespace frame
     }
 
     // get one row data from index of row
-    [[maybe_unused]] RowArray get_row(unsigned long long int i)
+    [[maybe_unused]] RowArray get_row(size_t i)
     {
       if (i < length)
       {
@@ -1456,7 +1465,7 @@ namespace frame
     }
 
     // get one row data from index of row
-    [[maybe_unused]] const RowArray get_row(unsigned long long int i) const
+    [[maybe_unused]] const RowArray get_row(size_t i) const
     {
       if (i < length)
       {
@@ -1510,7 +1519,7 @@ namespace frame
         length++;
         std::stringstream stream;
         user_variant item;
-        for (unsigned long long int i = 0; i < value_str_vector.size(); ++i)
+        for (size_t i = 0; i < value_str_vector.size(); ++i)
         {
           stream.clear();
           stream << value_str_vector[i];
@@ -1588,9 +1597,9 @@ namespace frame
     std::string Dataframe_name;
     std::vector<std::string> column;
     std::vector<ColumnArray *> matrix;
-    unsigned long long int width;
-    unsigned long long int length;
-    std::unordered_map<std::string, unsigned long long int> index;
+    size_t width;
+    size_t length;
+    std::unordered_map<std::string, size_t> index;
   };
 
   namespace toolbox
@@ -1663,7 +1672,7 @@ namespace frame
       [[maybe_unused]] void print_scaler_array() const
       {
         std::cout.setf(std::ios::internal, std::ios::floatfield);
-        for (unsigned long long int i = 0; i < scaler_array.size() - 1; ++i)
+        for (size_t i = 0; i < scaler_array.size() - 1; ++i)
         {
           std::cout << "{" << scaler_array[i].first << "," << scaler_array[i].second
                     << "},";
@@ -1674,9 +1683,9 @@ namespace frame
 
       void transform(Dataframe<T> &dataset)
       {
-        for (unsigned long long int i = 0; i < dataset.num_cols(); ++i)
+        for (size_t i = 0; i < dataset.num_cols(); ++i)
         {
-          for (unsigned long long int j = 0; j < dataset.num_rows(); ++j)
+          for (size_t j = 0; j < dataset.num_rows(); ++j)
           {
             dataset(i)[j] = transform(dataset(i)[j], scaler_array[i]);
           }
@@ -1694,7 +1703,7 @@ namespace frame
 
       void transform(std::vector<T> &data)
       {
-        for (unsigned long long int i = 0; i < data.size(); ++i)
+        for (size_t i = 0; i < data.size(); ++i)
         {
           std::visit(
               overloaded{
@@ -1737,7 +1746,7 @@ namespace frame
       {
         Dataframe<double> dataset(filename);
         scaler_array.clear();
-        for (unsigned long long int i = 0; i < dataset.num_rows(); ++i)
+        for (size_t i = 0; i < dataset.num_rows(); ++i)
         {
           scaler_array.emplace_back(dataset(0)[i], dataset(1)[i]);
         }

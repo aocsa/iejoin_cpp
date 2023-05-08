@@ -14,7 +14,7 @@ endif ()
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 23)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3")
 # clang++ -std=c++2b -o main sample.cpp
 
 include_directories(
@@ -24,7 +24,7 @@ include_directories(
 find_package(Boost REQUIRED)
 
 find_package(Threads)
-find_package(fmt REQUIRED)
+# find_package(fmt REQUIRED)
 # find_package(glog REQUIRED)
 
 add_executable(sample main.cpp)

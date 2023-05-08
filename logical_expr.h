@@ -6,8 +6,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <glog/logging.h>
-
 
 // Forward declaration of LogicalPlan
 class LogicalPlan;
