@@ -23,21 +23,16 @@
 using user_variant =
     std::variant<char, int, long int, float, double, std::string>;
 
-using Table = frame::Dataframe<int>;
+using Table = frame::Dataframe<user_variant>;
 using Row = Table::RowArray;
-using IntTable = std::vector<std::vector<int>>;
+using IntTable = frame::Dataframe<int>;
 using ColumnNames = std::vector<std::string>;
 using Identifier = std::function<int(int)>;
 
 // PrintArray function
 void PrintArray(std::string_view name, const IntTable &L) {
   std::cout << name << ":" << std::endl;
-  for (const auto &row : L) {
-    for (const auto &col : row) {
-      std::cout << col << " ";
-    }
-    std::cout << std::endl;
-  }
+  std::cout << L << std::endl;
 }
 
 // PrintArray function
@@ -58,21 +53,21 @@ enum kOperator {
   kNotEqual,
 };
 
-std::function<bool(int, int)> get_operator_fn(const kOperator op) {
+std::function<bool(user_variant, user_variant)> get_operator_fn(const kOperator op) {
   // return a lambda function that takes two ints and returns a bool
   switch (op) {
   case kLess:
-    return [](int a, int b) { return a < b; };
+    return [](user_variant a, user_variant b) { return a < b; };
   case kLessEqual:
-    return [](int a, int b) { return a <= b; };
+    return [](user_variant a, user_variant b) { return a <= b; };
   case kGreater:
-    return [](int a, int b) { return a > b; };
+    return [](user_variant a, user_variant b) { return a > b; };
   case kGreaterEqual:
-    return [](int a, int b) { return a >= b; };
+    return [](user_variant a, user_variant b) { return a >= b; };
   case kEqual:
-    return [](int a, int b) { return a == b; };
+    return [](user_variant a, user_variant b) { return a == b; };
   case kNotEqual:
-    return [](int a, int b) { return a != b; };
+    return [](user_variant a, user_variant b) { return a != b; };
   default:
     throw std::runtime_error("Unknown operator");
   }
@@ -84,71 +79,50 @@ struct Predicate {
   std::string lhs;
   std::string rhs;
 
-  std::function<bool(int, int)> condition() const {
+  std::function<bool(user_variant , user_variant)> condition() const {
     return get_operator_fn(operator_name);
   }
 };
 
-IntTable ArrayOf(
-    const Table &table, const ColumnNames &cols,
-    Identifier identifier = [](int rid) { return rid; }) {
+IntTable ArrayOf(const Table &table, const ColumnNames &cols) {
   // Project the predicate columns and a row id as tuples: (rid, X, ...)
-  IntTable result;
+  IntTable result = IntTable::create_empty_dataframe(table.num_rows());
+  // Add a row id column
+  result.create_row_index();
 
-  int rid = 0;
-  for (size_t i = 0; i < table.row_num(); i++) {
-    std::vector<int> row_result = {identifier(rid)};
-    const auto &row = table[i];
-    for (const auto &name : cols) {
-      auto idx = table.index_of_column_name(name);
-      row_result.push_back(row[idx]);
-    }
-    result.push_back(row_result);
-    ++rid;
+  for (auto col_name : cols) {
+    auto index = table.index_of_column_name(col_name);
+
+    Table::ColumnArray column = table.get_column(index);
+    std::vector<int> column_values = column.as<int>();
+
+    result.insert(col_name, column_values);
   }
   return result;
 }
 
-IntTable Mark(IntTable &L) {
+void Mark(IntTable &L) {
   // Add a marked column that will become P
   // [ ... P]
-  int p = 0;
-  for (auto &l : L) {
-    l.push_back(p);
-    ++p;
+  std::vector<int> p_values;
+  p_values.reserve(L.num_rows());
+  for (int p = 0; p < L.num_rows(); p++) {
+    p_values.push_back(p);
   }
-  return L;
-}
-
-std::vector<std::tuple<int, int>>
-MakePairs(const std::vector<std::tuple<Row, Row>> &pairs) {
-  std::vector<std::tuple<int, int>> result;
-
-  for (const auto &pair : pairs) {
-    const Row &l = std::get<0>(pair);
-    const Row &r = std::get<1>(pair);
-    int index = 0; // 'row'
-    result.emplace_back(l[index], r[index]);
-  }
-  return result;
+  L.insert("p", p_values);
 }
 
 std::vector<int> ExtractColumn(const IntTable &table, const int &column) {
-  std::vector<int> result;
-
-  for (const auto &row : table) {
-    result.push_back(row.at(column));
-  }
-  return result;
+  return table.get_column(column).get_std_vector();
 }
 
-std::vector<std::tuple<Row, Row>>
+std::vector<std::tuple<int, int>>
 LoopJoin(const Table &left, const Table &right,
          const std::vector<Predicate> &preds) {
-  std::vector<std::tuple<Row, Row>> result;
+  std::vector<std::tuple<int, int>> result;
 
-  for (size_t i = 0; i < left.row_num(); i++) {
-    for (size_t j = 0; j < right.row_num(); j++) {
+  for (size_t i = 0; i < left.num_rows(); i++) {
+    for (size_t j = 0; j < right.num_rows(); j++) {
       const Row &left_row = left.get_row(i);
       const Row &right_row = right.get_row(j);
       bool matching = true;
@@ -162,7 +136,7 @@ LoopJoin(const Table &left, const Table &right,
         }
       }
       if (matching) {
-        result.emplace_back(left_row, right_row);
+        result.emplace_back(i, j);
       }
     }
   }
@@ -176,7 +150,7 @@ IESelfJoin(const Table &T, const std::vector<Predicate> &preds, int trace = 0) {
 
   auto op2 = preds[1].condition();
   auto Y = preds[1].lhs;
-  int n = T.row_num();
+  int n = T.num_rows();
   auto op_name1 = preds[0].operator_name;
   auto op_name2 = preds[1].operator_name;
 
@@ -192,15 +166,26 @@ IESelfJoin(const Table &T, const std::vector<Predicate> &preds, int trace = 0) {
   bool descending1 = (op_name1 == kOperator::kGreater) ||
                      (op_name1 == kOperator::kGreaterEqual);
 
-  std::sort(L.begin(), L.end(),
-            [&descending1, &X](const auto &a, const auto &b) {
-              auto first = std::make_pair(a[1], a[0]);
-              auto second = std::make_pair(b[1], b[0]);
-              return descending1 ? first > second : first < second;
-            });
+  //  0 100 6
+  //  1 140 11
+  //  2 80 10
+  //  3 90 5
+
+  //  std::sort(L.begin(), L.end(),
+  //            [&descending1, &X](const auto &a, const auto &b) {
+  //              auto first = std::make_pair(a[1], a[0]);
+  //              auto second = std::make_pair(b[1], b[0]);
+  //              return descending1 ? first > second : first < second;
+  //            });
+  L = L.sort_by(X, descending1);
+  if (trace)
+    PrintArray("sortLx", L);
   std::vector<int> L1 = ExtractColumn(L, 1);
 
-  L = Mark(L);
+  Mark(L);
+  if (trace)
+    PrintArray("L", L);
+
   auto Li = ExtractColumn(L, 0);
 
   // 4. if (op2 ∈ {>, ≥}) sort L2 in ascending order
@@ -208,12 +193,17 @@ IESelfJoin(const Table &T, const std::vector<Predicate> &preds, int trace = 0) {
   bool descending2 =
       (op_name2 == kOperator::kLess) || (op_name2 == kOperator::kLessEqual);
 
-  std::sort(L.begin(), L.end(),
-            [&descending2, &Y](const auto &a, const auto &b) {
-              auto first = std::make_pair(a[2], a[0]);
-              auto second = std::make_pair(b[2], b[0]);
-              return descending2 ? first > second : first < second;
-            });
+  //  std::sort(L.begin(), L.end(),
+  //            [&descending2, &Y](const auto &a, const auto &b) {
+  //              auto first = std::make_pair(a[2], a[0]);
+  //              auto second = std::make_pair(b[2], b[0]);
+  //              return descending2 ? first > second : first < second;
+  //            });
+  //
+  L = L.sort_by(Y, descending2);
+  if (trace)
+    PrintArray("sortLY", L);
+
   std::vector<int> L2 = ExtractColumn(L, 2);
 
   // 6. compute the permutation array P of L2 w.r.t. L1
@@ -298,35 +288,37 @@ IESelfJoin(const Table &T, const std::vector<Predicate> &preds, int trace = 0) {
 void test_employees() {
 
   // create an empty Dataframe object
-  frame::Dataframe<user_variant> employees;
+  Table employees;
 
   // recreate a Dataframe object from csv file or another
   employees.read_csv(
-      "/Users/aocsa/CLionProjects/sample/sample.csv"); // d1 =
-                                                       // std::move(Dataframe<double>("../test.txt"));
+      "/Users/aocsa/git/iejoin/employees.csv"); 
 
-  std::cout << employees << std::endl;
+  // std::cout << employees << std::endl;
   std::vector<Predicate> preds = {{"op1", kOperator::kLess, "salary", "salary"},
                                   {"op2", kOperator::kGreater, "tax", "tax"}};
 
-  auto sort_df = employees.sort_by("name");
-  std::cout << sort_df << std::endl;
+  // auto sort_df = employees.sort_by("name");
+  // std::cout << sort_df << std::endl;
 
-  auto select_df = employees.select({"name", "salary"});
-  std::cout << "select_df:" << select_df << std::endl;
+  // auto select_df = employees.select({"name", "salary"});
+  // std::cout << "select_df:" << select_df << std::endl;
 
-  auto parts = employees.partition(2);
-  for (auto &part : parts) {
-    std::cout << part << std::endl;
+  // auto parts = employees.partition(2);
+  // for (auto &part : parts) {
+  //   std::cout << part << std::endl;
+  // }
+
+  auto actual = IESelfJoin(employees, preds, 0);
+
+  std::cerr << "actual.sz: " << actual.size() << std::endl;
+  for (const auto &[l, r] : actual) {
+    printf("({%d}, {%d})\n", l, r);
   }
-  //    auto expected = MakePairs(LoopJoin<user_variant>(employees, employees,
-  //    preds)); for (const auto &[l, r] : expected) {
-  //      printf("({%d}, {%d})\n", l, r);
-  //    }
 
-  auto a = std::make_shared<Column>("name");
-  auto b = std::make_shared<Literal>("John");
-  auto logical_expr = eq(a, b);
+  // auto a = std::make_shared<Column>("name");
+  // auto b = std::make_shared<Literal>("John");
+  // auto logical_expr = eq(a, b);
 
   //    auto filter_df = employees.filter(logical_expr);
 }
@@ -336,12 +328,12 @@ Table transform(const std::vector<std::map<std::string, int>> &data) {
 
   std::vector<std::string> header;
   for (const auto &row_data : data) {
-    std::vector<int> values;
+    std::vector<user_variant> values;
     for (const auto &[key, value] : row_data) {
       header.push_back(key);
       values.push_back(value);
     }
-    if (table.column_num() == 0) {
+    if (table.num_cols() == 0) {
       table.column_paste(header);
     }
     table.append(values);
@@ -362,13 +354,14 @@ void test_west() {
   std::vector<Predicate> preds = {{"op1", kOperator::kGreater, "time", "time"},
                                   {"op2", kOperator::kLess, "cost", "cost"}};
 
-  auto expected = MakePairs(LoopJoin(west, west, preds));
+  auto expected = LoopJoin(west, west, preds);
 
+  std::cerr << "expected.sz: " << expected.size() << std::endl;
   for (const auto &[l, r] : expected) {
     printf("({%d}, {%d})\n", l, r);
   }
 
-  auto actual = IESelfJoin(west, preds, 1);
+  auto actual = IESelfJoin(west, preds, 0);
 
   std::cerr << "actual.sz: " << actual.size() << std::endl;
   for (const auto &[l, r] : actual) {
@@ -379,6 +372,22 @@ void test_west() {
 int main(int argc, char *argv[]) {
   // Initialize Google’s logging library.
   test_west();
+
   test_employees();
+
+//  std::map<int, std::string> m = {{1, "one"}, {2, "two"}, {3, "three"}};
+//
+//  bool contains_key = m.contains(1); // contains_key = true
+//
+//  std::vector<int> nums = {1, 2, 3, 4, 5};
+//
+//  auto tail_nums = nums | std::views::filter([](int i) { return i > 3; }) |
+//                   std::views::transform([](int i) { return i * 2; }) |
+//                   std::views::take(2) | std::views::reverse;
+//  for (const auto& num : tail_nums) {
+//    std::cout << num << " ";
+//  }
+//  std::cout << '\n';
+
   return 0;
 }
