@@ -130,7 +130,9 @@ LoopJoin(const DataFrame &left, const DataFrame &right,
         }
       }
       if (matching) {
-        result.emplace_back(i, j);
+        assert(left.col_index("row_index") == 0);
+        assert(right.col_index("row_index") == 0);
+        result.emplace_back(left_row[0], right_row[0]); // get id from column row_index
       }
     }
   }
@@ -180,6 +182,7 @@ IESelfJoin(const DataFrame &T, const std::vector<Predicate> &preds, int trace = 
   if (trace)
     PrintArray("L", L);
 
+  assert(L.col_index("row_index") == 0);
   auto Li = ExtractColumn(L, 0);
 
   // 4. if (op2 ∈ {>, ≥}) sort L2 in ascending order
@@ -205,8 +208,8 @@ IESelfJoin(const DataFrame &T, const std::vector<Predicate> &preds, int trace = 
 
   // 7. initialize bit-array B (|B| = n), and set all bits to 0
   boost::dynamic_bitset<> B(n);
-
-  // 8. initialize join result as an empty list for tuple pairs
+//
+//  // 8. initialize join result as an empty list for tuple pairs
   std::vector<std::pair<int, int>> join_result;
   if (trace) {
     //  L1: [140, 100, 90, 80]
@@ -364,25 +367,148 @@ void test_west() {
   }
 }
 
+bool has_intersection_values(int min_1, int max_1, int min_2, int max_2) {
+  bool ret = max_1 >= min_2 && max_2 >= min_1;
+  if (ret) {
+    std::cout << "(" << min_1 << " - " << max_1 << ") |  (" << min_2 << " - " << max_2 << ")\n";
+  } else {
+    std::cout << "\t  =>> (" << min_1 << " - " << max_1 << ") |  (" << min_2 << " - " << max_2 << ")\n";
+  }
+  return ret;
+}
+
+struct Partition{
+  int id;
+  std::unordered_map<std::string, Metadata> metadata;
+};
+
+
+bool has_intersection(const Metadata & min_max_1, const Metadata &min_max_2){
+  return has_intersection_values(min_max_1.min, min_max_1.max, min_max_2.min, min_max_2.max);
+}
+
+std::vector<std::pair<int, int>> virtual_cross_join(std::vector<Partition> &lhs, std::vector<Partition> & rhs, std::string X, std::string Y, bool trace = 1) {
+  std::vector<std::pair<int, int>> result;
+  for (auto&lhs_metadata : lhs) {
+    for (auto&rhs_metadata : rhs) {
+      if (has_intersection(lhs_metadata.metadata[X],
+                           rhs_metadata.metadata[X]) &&
+          has_intersection(lhs_metadata.metadata[Y],
+                           rhs_metadata.metadata[Y])) {
+        std::pair<int, int> t(lhs_metadata.id, rhs_metadata.id);
+        if (trace) {
+          std::cout << "has_intersection>> (" << std::get<0>(t) << ", " << std::get<1>(t) << ")\n";
+        }
+        result.push_back(t);
+      }
+    }
+    return result;
+  }
+}
+
+std::vector<std::tuple<int, int>>
+ScalableIEJoin(const DataFrame &left, const DataFrame &right,
+         const std::vector<Predicate> &preds) {
+  auto op1 = preds[0].condition();
+  auto X = preds[0].lhs;
+
+  auto op2 = preds[1].condition();
+  auto Y = preds[1].lhs;
+  auto op_name1 = preds[0].operator_name;
+  auto op_name2 = preds[1].operator_name;
+
+  // why do we need to sort?
+  auto lhs = left.sort_by(X);
+  auto rhs = right.sort_by(Y);
+
+  // optimize partition sort
+  const float kBucketSize = 1000;
+  int lhs_num_parts = lhs.num_rows() > kBucketSize ? static_cast<int>(lhs.num_rows() / kBucketSize) : 2;
+  int rhs_num_parts = rhs.num_rows() > kBucketSize ? static_cast<int>(rhs.num_rows() / kBucketSize) : 2;
+  auto lsh_parts = lhs.partition(lhs_num_parts);
+  auto rhs_parts = rhs.partition(rhs_num_parts);
+
+  std::vector<Partition> partitions_lhs;
+  for (int i = 0; i < lhs_num_parts; ++i) {
+    partitions_lhs.emplace_back(Partition{.id = i, .metadata = lsh_parts[i].min_max({X, Y})});
+  }
+
+  std::vector<Partition>  partitions_rhs;
+  for (int i = 0; i < rhs_num_parts; ++i) {
+    partitions_rhs.emplace_back(Partition{.id = i, .metadata = rhs_parts[i].min_max({X, Y})});
+  }
+
+  auto cross_join_result = virtual_cross_join(partitions_lhs, partitions_rhs, X, Y);
+  std::cout << "cross_join_result.sz: " << cross_join_result.size() << std::endl;
+  for (int index = 0; index < cross_join_result.size(); index++) {
+    auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
+    std::cout << index << " >>> " << lhs_part_index << "|" << rhs_part_index << std::endl;
+//    if (lhs_part_index < 0 || lhs_part_index >= lhs_num_parts) {
+//      std::cerr << "lhs_part_index out of range: " << lhs_part_index << std::endl;
+//      break;
+//    }
+//    if (rhs_part_index < 0 || rhs_part_index >= rhs_num_parts) {
+//      std::cerr << "rhs_part_index out of range: " << rhs_part_index << std::endl;
+//      break;
+//    }
+//    auto expected = LoopJoin(lsh_parts[lhs_part_index], rhs_parts[rhs_part_index], preds);
+//    for (const auto &[x, y] : expected) {
+//      printf("({%d}, {%d})\n", x, y);
+//    }
+  }
+}
+
+void distributed_iejoin_sample() {
+  // R data
+  std::vector<int> r_x = {5, 6, 7, 1, 2, 3};
+  std::vector<int> r_y = {0, 1, 2, 3, 4, 5};
+
+  // S data
+  std::vector<int> s_x = {0, 2, 3, 1};
+  std::vector<int> s_y = {0, 1, 7, 8};
+
+  DataFrame R = DataFrame::create_empty_dataframe(r_x.size());
+  R.create_row_index();
+  R.insert("x", r_x);
+  R.insert("y", r_y);
+
+  DataFrame S = DataFrame::create_empty_dataframe(s_x.size());
+  S.create_row_index();
+  S.insert("x", s_x);
+  S.insert("y", s_y);
+
+  std::vector<Predicate> preds = {{"op1", kOperator::kLess, "x", "x"},
+                                  {"op2", kOperator::kGreater, "y", "y"}};
+
+
+  auto expected = ScalableIEJoin(R, S, preds);
+
+  std::cerr << "ScalableIEJoin.sz: " << expected.size() << std::endl;
+  for (const auto &[l, r] : expected) {
+    printf("({%d}, {%d})\n", l, r);
+  }
+}
+
 int main(int argc, char *argv[]) {
   // Initialize Google’s logging library.
 //  test_west();
 
-  test_employees();
+//  test_employees();
+distributed_iejoin_sample();
 
-//  std::map<int, std::string> m = {{1, "one"}, {2, "two"}, {3, "three"}};
+// std::map<int, std::string> m = {{1, "one"}, {2, "two"}, {3, "three"}};
 //
-//  bool contains_key = m.contains(1); // contains_key = true
+// bool contains_key = m.contains(1); // contains_key = true
 //
-//  std::vector<int> nums = {1, 2, 3, 4, 5};
+// std::vector<int> nums = {1, 2, 3, 4, 5};
 //
-//  auto tail_nums = nums | std::views::filter([](int i) { return i > 3; }) |
-//                   std::views::transform([](int i) { return i * 2; }) |
-//                   std::views::take(2) | std::views::reverse;
-//  for (const auto& num : tail_nums) {
-//    std::cout << num << " ";
-//  }
-//  std::cout << '\n';
+// auto tail_nums = nums | std::views::filter([](int i) { return i > 3; }) |
+//                  std::views::transform([](int i) { return i * 2; }) |
+//                  std::views::take(2) | std::views::reverse;
+// for (const auto& num : tail_nums) {
+//   std::cout << num << " ";
+// }
+// std::cout << '\n';
 
   return 0;
 }

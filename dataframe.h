@@ -42,6 +42,12 @@
 typedef std::variant<char, int, long int, float, double, std::string>
     user_variant;
 
+struct Metadata {
+  std::string col_name;
+  long int min;
+  long int max;
+};
+
 template <class... Ts>
 struct overloaded : Ts...
 {
@@ -210,7 +216,7 @@ namespace frame
     };
   } // namespace toolbox
 
-  template <typename T = user_variant>
+  template <typename T>
   class Dataframe
   {
   public:
@@ -540,7 +546,7 @@ namespace frame
   public:
     // constructed by file name
     explicit Dataframe(const std::string &filename, const char &delimiter = ',')
-        : Dataframe_name(filename), width(0), length(0)
+        : dataframe_name(filename), width(0), length(0)
     {
       read_csv(filename, delimiter);
     }
@@ -548,7 +554,7 @@ namespace frame
     // constructed by width and length
     explicit Dataframe(size_t _width = 0,
                        std::string name = "Dataframe")
-        : Dataframe_name(std::move(name)), width(_width), length(0)
+        : dataframe_name(std::move(name)), width(_width), length(0)
     {
       string_vector temp;
       for (size_t i = 0; i < _width; i++)
@@ -559,14 +565,14 @@ namespace frame
     // constructed by string vector
     explicit Dataframe(const string_vector &columns,
                        std::string name = "Dataframe")
-        : Dataframe_name(std::move(name)), width(columns.size()), length(0)
+        : dataframe_name(std::move(name)), width(columns.size()), length(0)
     {
       column_paste(columns);
     }
 
     // copy constructor
     Dataframe(const Dataframe &dataframe)
-        : Dataframe_name(dataframe.Dataframe_name), width(dataframe.width),
+        : dataframe_name(dataframe.dataframe_name), width(dataframe.width),
           length(dataframe.length), column(dataframe.column),
           index(dataframe.index)
     {
@@ -579,8 +585,8 @@ namespace frame
 
     // move constructor
     Dataframe(Dataframe &&dataframe) noexcept
-        : Dataframe_name(dataframe.Dataframe_name), width(dataframe.width),
-          length(dataframe.length), column(std::move(dataframe.column)),
+        : dataframe_name(dataframe.dataframe_name),
+          column(std::move(dataframe.column)), width(dataframe.width), length(dataframe.length),
           index(std::move(dataframe.index))
     {
       matrix.clear();
@@ -663,7 +669,7 @@ namespace frame
       if (!contain("row_index"))
       {
         ++width;
-        column.push_back("row_index");
+        column.emplace_back("row_index");
         index.emplace("row_index", index.size());
         std::vector<T> row_index_values;
         row_index_values.reserve(length);
@@ -945,9 +951,9 @@ namespace frame
     }
 
     // partition the Dataframe in n parts
-    std::vector<Dataframe> partition(size_t n)
+    std::vector<Dataframe<DataType>> partition(size_t n)
     {
-      std::vector<Dataframe> dataframes;
+      std::vector<Dataframe<DataType>> dataframes;
       if (n > 0)
       {
         size_t part = length / n;
@@ -955,7 +961,7 @@ namespace frame
         size_t start = 0;
         for (size_t i = 0; i < n; ++i)
         {
-          Dataframe dataframe;
+          Dataframe<DataType> dataframe;
           size_t dataframe_length;
           if (i == n - 1)
           {
@@ -979,7 +985,7 @@ namespace frame
     }
 
     // sort dataframe by x column
-    Dataframe sort_by(std::string column_name, bool descending = false)
+    Dataframe sort_by(std::string column_name, bool descending = false) const
     {
       Dataframe dataframe;
       dataframe.column_paste(this->get_column_str());
@@ -1017,6 +1023,22 @@ namespace frame
       auto column = this->get_column(index);
       return *std::max_element(column.begin(), column.end());
     }
+
+    // compute min_max values
+    std::unordered_map<std::string, Metadata> min_max(const std::vector<std::string>& columns)
+    {
+      std::unordered_map<std::string, Metadata> result;
+      for (auto col_name : columns)
+      {
+//        auto idx = this->index.find(col_name);
+//        ColumnArray c = this->get_column(idx);
+//        auto min = *std::min_element(c.begin(), c.end());
+//        auto max = *std::max_element(c.begin(), c.end());
+//        result[col_name] = Metadata{.col_name=col_name, .min = min, .max = max};
+      }
+      return result;
+    }
+
 
     // select columns from Dataframe
     Dataframe select(std::vector<std::string> columns) const
@@ -1113,8 +1135,8 @@ namespace frame
         Dataframe dataframe(Dataframe1.column);
         dataframe.concat_line(Dataframe1);
         dataframe.concat_line(Dataframe2);
-        dataframe.Dataframe_name =
-            Dataframe1.Dataframe_name + "&" + Dataframe2.Dataframe_name;
+        dataframe.dataframe_name =
+            Dataframe1.dataframe_name + "&" + Dataframe2.dataframe_name;
         return std::move(dataframe);
       }
       else
@@ -1130,7 +1152,7 @@ namespace frame
       clear();
       width = dataframe.width;
       length = dataframe.length;
-      Dataframe_name = dataframe.Dataframe_name;
+      dataframe_name = dataframe.dataframe_name;
       column = std::move(dataframe.column);
       index = std::move(dataframe.index);
       matrix.clear();
@@ -1151,7 +1173,7 @@ namespace frame
       length = dataframe.length;
       column = dataframe.column;
       index = dataframe.index;
-      Dataframe_name = dataframe.Dataframe_name;
+      dataframe_name = dataframe.dataframe_name;
       matrix.clear();
       for (auto i = dataframe.matrix.begin(); i < dataframe.matrix.end(); ++i)
       {
@@ -1196,7 +1218,7 @@ namespace frame
 
     void to_csv(const char &delimiter = ',') const
     {
-      to_csv(Dataframe_name, delimiter);
+      to_csv(dataframe_name, delimiter);
     }
 
     void to_csv(const std::string &filename, const char &delimiter = ',') const
@@ -1291,7 +1313,7 @@ namespace frame
     friend std::ostream &operator<<(std::ostream &cout,
                                     const Dataframe &dataframe)
     {
-      cout << "name : " << dataframe.Dataframe_name << std::endl;
+      cout << "name : " << dataframe.dataframe_name << std::endl;
       cout << "width : " << dataframe.width << std::endl;
       cout << "length : " << dataframe.length << std::endl;
       cout.setf(std::ios::fixed, std::ios::floatfield);
@@ -1307,7 +1329,7 @@ namespace frame
         {
           // check if T is variant type
           if constexpr (std::is_arithmetic<T>::value) {
-            cout << '\'' << (*dataframe.matrix[j])[i] << '\'';
+            cout <<  (*dataframe.matrix[j])[i] << separator;
           } else {
             std::visit(overloaded{
                            [&cout](char value)
@@ -1351,7 +1373,8 @@ namespace frame
     }
 
     // get string vector of columns
-    std::vector<std::string> get_column_str() const { return column; }
+
+    const std::vector<std::string>& get_column_str() const { return column; }
 
     size_t col_index(std::string col) const
     {
@@ -1367,7 +1390,7 @@ namespace frame
 
     [[maybe_unused]] bool get_scaler_flag() { return is_scaler; }
 
-    [[maybe_unused]] const std::string &name() { return Dataframe_name; }
+    [[maybe_unused]] const std::string &name() { return dataframe_name; }
 
   public:
     // clear all data, generate an empty Dataframe
@@ -1594,7 +1617,7 @@ namespace frame
         return false;
     }
 
-    std::string Dataframe_name;
+    std::string dataframe_name;
     std::vector<std::string> column;
     std::vector<ColumnArray *> matrix;
     size_t width;

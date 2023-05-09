@@ -78,8 +78,6 @@ std::string format(const LogicalPlan& plan, int indent = 0) {
 // Forward declaration of LogicalPlan
 class LogicalPlan;
 
-// Forward declaration of Field class
-class Field;
 
 // Define LogicalExpr interface
 class LogicalExpr {
