@@ -2,7 +2,6 @@
 #ifndef Dataframe_H
 #define Dataframe_H
 
-#include "logical_expr.h"
 #include <algorithm>
 #include <cmath>
 #include <exception>

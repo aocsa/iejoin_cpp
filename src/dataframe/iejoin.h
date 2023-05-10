@@ -3,7 +3,6 @@
 #include <iostream>
 
 #include "dataframe.h"
-#include "logical_expr.h"
 
 #include <array>
 #include <iostream>

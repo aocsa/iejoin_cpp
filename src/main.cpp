@@ -2,7 +2,6 @@
 #include <iostream>
 
 #include "dataframe/dataframe.h"
-#include "dataframe/logical_expr.h"
 #include "dataframe/iejoin.h"
 
 #include <array>

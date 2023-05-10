@@ -133,7 +133,7 @@ project_artifact (
 
         SOURCES
         src/dataframe/dataframe.cpp
-        src/dataframe/logical_expr.cpp
+        #src/dataframe/logical_expr.cpp
         src/dataframe/iejoin.cpp
 
         TESTS

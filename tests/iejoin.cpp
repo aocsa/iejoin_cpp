@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "dataframe/dataframe.h"
-#include "dataframe/logical_expr.h"
 #include "dataframe/iejoin.h"
 
 void test_west() {
