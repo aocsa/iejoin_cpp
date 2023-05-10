@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
      std::string_view csv_file_path = argv[1];
      std::string_view test_name = argc == 3 ? argv[2] : "distributed_iejoin_employees";
      std::cout << "test_name "  << ": " << test_name << std::endl;
-     if (csv_file_path.contains(".csv")){
+     if (csv_file_path.find(".csv") != std::string::npos){
       if (test_name == "iejoin") {
           test_iejoin_employees(csv_file_path);
       } else if (test_name == "distributed_iejoin") {
