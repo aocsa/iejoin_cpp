@@ -1,0 +1,6 @@
+---
+BasedOnStyle:  Google
+DerivePointerAlignment: false
+ColumnLimit: 90
+CommentPragmas: '^\\.+'
+IncludeBlocks: Preserve
