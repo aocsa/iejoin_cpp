@@ -1,22 +1,3 @@
-/**
- * @file     Dataframe.h
- * @class    Dataframe
- * @brief    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *           read from csv file
- *           write into csv file and lib_svm file
- *           min max scaler and standard scaler for each column's data
- *           append one row from std::vector & remove row
- *           insert one column from std::vector & remove column
- *           get a row of data by index of the row
- *           get a column of data by string of the column
- *           concat & add double Dataframe object (horizontally & vertically)
- *           support single variable with multiple types, including char, int,
- *long int, float, double, std::string
- *           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- * @details
- * @author   Flame
- * @date     4.24.2020
- **/
 
 #ifndef Dataframe_H
 #define Dataframe_H
@@ -1008,33 +989,17 @@ namespace frame
       return dataframe;
     }
 
-    // compute min value of x column
-    T min(std::string column_name)
-    {
-      auto index = this->col_index(column_name);
-      auto column = this->get_column(index);
-      return *std::min_element(column.begin(), column.end());
-    }
-
-    // compute max value of x column
-    T max(std::string column_name)
-    {
-      auto index = this->col_index(column_name);
-      auto column = this->get_column(index);
-      return *std::max_element(column.begin(), column.end());
-    }
-
     // compute min_max values
     std::unordered_map<std::string, Metadata> min_max(const std::vector<std::string>& columns)
     {
       std::unordered_map<std::string, Metadata> result;
       for (auto col_name : columns)
       {
-//        auto idx = this->index.find(col_name);
-//        ColumnArray c = this->get_column(idx);
-//        auto min = *std::min_element(c.begin(), c.end());
-//        auto max = *std::max_element(c.begin(), c.end());
-//        result[col_name] = Metadata{.col_name=col_name, .min = min, .max = max};
+        auto index = this->col_index(col_name);
+        auto c = this->get_column(index);
+        auto min = *std::min_element(c.begin(), c.end());
+        auto max = *std::max_element(c.begin(), c.end());
+        result[col_name] = Metadata{.col_name=col_name, .min = min, .max = max};
       }
       return result;
     }
@@ -1183,13 +1148,13 @@ namespace frame
     }
 
     // read from csv file
-    void read_csv(const std::string &filename, const char &delimiter = ',')
+    void read_csv(std::string_view filename, const char &delimiter = ',')
     {
       clear();
       std::ifstream reader(filename.data());
       if (!reader)
       {
-        throw(std::invalid_argument(filename + " is invalid!"));
+        throw(std::invalid_argument(filename.data() + std::string(" is invalid!")));
       }
 
       std::string str_line;
@@ -1270,44 +1235,6 @@ namespace frame
       }
       cout.close();
     }
-
-#ifdef libsvm
-    // write into lib_svm file
-    void to_lib_svm_file(const std::string &filename) const
-    {
-      std::ofstream cout =
-          std::ofstream(filename.data(), std::ios::out | std::ios::trunc);
-      for (size_t i = 0; i < num_rows(); ++i)
-      {
-        cout << "+1 ";
-        size_t j = 0;
-        for (auto array = matrix.begin(); array < matrix.end(); ++array)
-        {
-          cout << ++j << ":";
-          std::visit(overloaded{
-                         [&cout](char value)
-                         { cout << value; },
-                         [&cout](int value)
-                         { cout << value; },
-                         [&cout](long int value)
-                         { cout << value; },
-                         [&cout](long long int value)
-                         { cout << value; },
-                         [&cout](float value)
-                         { cout << value; },
-                         [&cout](double value)
-                         { cout << value; },
-                         [&cout](const std::string &value)
-                         { cout << value; },
-                     },
-                     (**array)[i]);
-          cout << " ";
-        }
-        cout << std::endl;
-      }
-      cout.close();
-    }
-#endif
 
     // print Dataframe
     friend std::ostream &operator<<(std::ostream &cout,
@@ -1563,7 +1490,11 @@ namespace frame
           {
             std::string temp;
             stream >> temp;
-            item = temp;
+            if (std::is_arithmetic_v<T>) {
+              item = (T)temp.size();
+            } else {
+              item = temp;
+            }
           }
 
           std::visit(
@@ -1624,345 +1555,5 @@ namespace frame
     size_t length;
     std::unordered_map<std::string, size_t> index;
   };
-
-  namespace toolbox
-  {
-    template <typename T = user_variant>
-    void remove_useless_columns(const std::vector<std::string> &filenames,
-                                const std::vector<std::string> &contents)
-    {
-      for (const auto &filename : filenames)
-      {
-        Dataframe<T> dataset(filename);
-        auto columns = dataset.get_column_str();
-        for (const auto &column : columns)
-          for (const auto &content : contents)
-            if (column.find(content) != -1)
-            {
-              dataset.remove(column);
-              continue;
-            }
-        dataset.to_csv(filename);
-      }
-    }
-
-    template <typename T = double>
-    class scaler
-    {
-      double transform(const T &value, std::pair<double, double> param)
-      {
-        double result = 0;
-        std::visit(overloaded{
-                       [&param, &result](char value)
-                       {
-                         result = (value - param.first) / param.second;
-                       },
-                       [&param, &result](int value)
-                       {
-                         result = (value - param.first) / param.second;
-                       },
-                       [&param, &result](long int value)
-                       {
-                         result = (value - param.first) / param.second;
-                       },
-                       [&param, &result](float value)
-                       {
-                         result = (value - param.first) / param.second;
-                       },
-                       [&param, &result](double value)
-                       {
-                         result = (value - param.first) / param.second;
-                       },
-                       [](const std::string &value) {},
-                   },
-                   user_variant(value));
-        return result;
-      }
-
-    public:
-      std::vector<std::pair<double, double>> scaler_array;
-
-      explicit scaler() : scaler_array({}) {}
-
-      explicit scaler(std::vector<std::pair<double, double>> _scaler_array)
-          : scaler_array(std::move(_scaler_array)) {}
-
-      explicit scaler(std::vector<std::pair<double, double>> &&_scaler_array)
-          : scaler_array(std::move(_scaler_array)) {}
-
-      explicit scaler(const std::string &filename) { load_scaler(filename); }
-
-      [[maybe_unused]] void print_scaler_array() const
-      {
-        std::cout.setf(std::ios::internal, std::ios::floatfield);
-        for (size_t i = 0; i < scaler_array.size() - 1; ++i)
-        {
-          std::cout << "{" << scaler_array[i].first << "," << scaler_array[i].second
-                    << "},";
-        }
-        std::cout << "{" << scaler_array.back().first << ","
-                  << scaler_array.back().second << "}";
-      }
-
-      void transform(Dataframe<T> &dataset)
-      {
-        for (size_t i = 0; i < dataset.num_cols(); ++i)
-        {
-          for (size_t j = 0; j < dataset.num_rows(); ++j)
-          {
-            dataset(i)[j] = transform(dataset(i)[j], scaler_array[i]);
-          }
-        }
-        dataset.set_scaler_flag(true);
-      }
-
-      Dataframe<T> transform_copy(const Dataframe<T> &dataset)
-      {
-        Dataframe<T> dataset_copy(dataset);
-        transform(dataset_copy);
-        dataset_copy.set_scaler_flag(true);
-        return std::move(dataset_copy);
-      }
-
-      void transform(std::vector<T> &data)
-      {
-        for (size_t i = 0; i < data.size(); ++i)
-        {
-          std::visit(
-              overloaded{
-                  [&](char value)
-                  { data[i] = transform(value, scaler_array[i]); },
-                  [&](int value)
-                  { data[i] = transform(value, scaler_array[i]); },
-                  [&](long int value)
-                  {
-                    data[i] = transform(value, scaler_array[i]);
-                  },
-                  [&](float value)
-                  { data[i] = transform(value, scaler_array[i]); },
-                  [&](double value)
-                  {
-                    data[i] = transform(value, scaler_array[i]);
-                  },
-                  [&](const std::string &value) {},
-              },
-              user_variant(data[i]));
-        }
-      }
-
-      std::vector<T> transform_copy(const std::vector<T> &data)
-      {
-        std::vector<T> data_copy(data);
-        transform(data_copy);
-        return std::move(data_copy);
-      }
-
-      void save_scaler(const std::string &filename = "../scaler")
-      {
-        Dataframe<double> dataset(std::vector<std::string>{"first", "second"});
-        for (const auto &item : scaler_array)
-          dataset.append({item.first, item.second});
-        dataset.to_csv(filename, ',');
-      }
-
-      void load_scaler(const std::string &filename)
-      {
-        Dataframe<double> dataset(filename);
-        scaler_array.clear();
-        for (size_t i = 0; i < dataset.num_rows(); ++i)
-        {
-          scaler_array.emplace_back(dataset(0)[i], dataset(1)[i]);
-        }
-      }
-    };
-
-    template <typename T = double>
-    class min_max_scaler : public scaler<T>
-    {
-    public:
-      explicit min_max_scaler(const Dataframe<T> &dataset)
-      {
-        scaler<T>::scaler_array.clear();
-        for (const auto &array : dataset)
-        {
-          double min_value = 0;
-          double max_value = 0;
-          std::visit(overloaded{
-                         [&min_value](char value)
-                         { min_value = value; },
-                         [&min_value](int value)
-                         { min_value = value; },
-                         [&min_value](long int value)
-                         { min_value = value; },
-                         [&min_value](float value)
-                         { min_value = value; },
-                         [&min_value](double value)
-                         { min_value = value; },
-                         [&min_value](const std::string &value)
-                         { min_value = 0; },
-                     },
-                     user_variant(*array->begin()));
-
-          std::visit(overloaded{
-                         [&max_value](char value)
-                         { max_value = value; },
-                         [&max_value](int value)
-                         { max_value = value; },
-                         [&max_value](long int value)
-                         { max_value = value; },
-                         [&max_value](float value)
-                         { max_value = value; },
-                         [&max_value](double value)
-                         { max_value = value; },
-                         [&max_value](const std::string &value)
-                         { max_value = 0; },
-                     },
-                     user_variant(*array->begin()));
-
-          for (const auto &item : *array)
-          {
-            if (item < min_value)
-            {
-              // min_value = item;
-              std::visit(
-                  overloaded{
-                      [&min_value](char value)
-                      { min_value = value; },
-                      [&min_value](int value)
-                      { min_value = value; },
-                      [&min_value](long int value)
-                      { min_value = value; },
-                      [&min_value](float value)
-                      { min_value = value; },
-                      [&min_value](double value)
-                      { min_value = value; },
-                      [&min_value](const std::string &value)
-                      { min_value = 0; },
-                  },
-                  user_variant(item));
-            }
-            else if (item > max_value)
-            {
-              // max_value = item;
-              std::visit(
-                  overloaded{
-                      [&max_value](char value)
-                      { max_value = value; },
-                      [&max_value](int value)
-                      { max_value = value; },
-                      [&max_value](long int value)
-                      { max_value = value; },
-                      [&max_value](float value)
-                      { max_value = value; },
-                      [&max_value](double value)
-                      { max_value = value; },
-                      [&max_value](const std::string &value)
-                      { max_value = 0; },
-                  },
-                  user_variant(item));
-            }
-          }
-          double second_value = max_value - min_value;
-          if (std::abs(second_value - (long int)(second_value)) < 1e-3)
-            second_value = 1;
-          scaler<T>::scaler_array.emplace_back(
-              std::pair<double, double>{min_value, second_value});
-        }
-      }
-
-      explicit min_max_scaler(
-          const std::vector<std::pair<double, double>> &_scaler_array)
-          : scaler<T>(_scaler_array) {}
-
-      explicit min_max_scaler(
-          std::vector<std::pair<double, double>> &&_scaler_array)
-          : scaler<T>(_scaler_array) {}
-
-      explicit min_max_scaler(const std::string &filename) : scaler<T>(filename) {}
-
-      explicit min_max_scaler() : scaler<T>() {}
-    };
-
-    template <typename T = double>
-    class standard_scaler : public scaler<T>
-    {
-    public:
-      explicit standard_scaler(const Dataframe<T> &dataset)
-      {
-        scaler<T>::scaler_array.clear();
-        for (const auto &array : dataset)
-        {
-          double sum = 0;
-          for (const auto &item : *array)
-          {
-            // sum += item;
-            std::visit(overloaded{
-                           [&sum](char value)
-                           { sum += value; },
-                           [&sum](int value)
-                           { sum += value; },
-                           [&sum](long int value)
-                           { sum += value; },
-                           [&sum](float value)
-                           { sum += value; },
-                           [&sum](double value)
-                           { sum += value; },
-                           [&sum](const std::string &value)
-                           { sum += 0; },
-                       },
-                       user_variant(item));
-          }
-          double mean = sum / array->size();
-          sum = 0;
-          for (const auto &item : *array)
-          {
-            // sum += std::pow((item - mean), 2);
-            std::visit(overloaded{
-                           [&sum, &mean](char value)
-                           {
-                             sum += std::pow((value - mean), 2);
-                           },
-                           [&sum, &mean](int value)
-                           {
-                             sum += std::pow((value - mean), 2);
-                           },
-                           [&sum, &mean](long int value)
-                           {
-                             sum += std::pow((value - mean), 2);
-                           },
-                           [&sum, &mean](float value)
-                           {
-                             sum += std::pow((value - mean), 2);
-                           },
-                           [&sum, &mean](double value)
-                           {
-                             sum += std::pow((value - mean), 2);
-                           },
-                           [&sum, &mean](const std::string &value)
-                           { sum += 0; },
-                       },
-                       user_variant(item));
-          }
-          sum /= double(array->size() - 1);
-          if (std::abs(sum - (long int)(sum)) < 1e-3)
-            sum = 1;
-          scaler<T>::scaler_array.emplace_back(
-              std::pair<double, double>{mean, std::sqrt(sum)});
-        }
-      }
-
-      explicit standard_scaler(
-          const std::vector<std::pair<double, double>> &_scaler_array)
-          : scaler<T>(_scaler_array) {}
-
-      explicit standard_scaler(
-          std::vector<std::pair<double, double>> &&_scaler_array)
-          : scaler<T>(_scaler_array) {}
-
-      explicit standard_scaler(const std::string &filename) : scaler<T>(filename) {}
-
-      explicit standard_scaler() : scaler<T>() {}
-    };
-  }    // namespace toolbox
 };     // namespace frame
 #endif // Dataframe_H
