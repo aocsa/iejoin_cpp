@@ -18,6 +18,8 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(Boost REQUIRED)
 find_package(Threads)
 find_package(GTest REQUIRED)
+find_package(fmt REQUIRED)
+find_package(glog REQUIRED)
 
 include_directories(
         $ENV{CONDA_PREFIX}/include
@@ -28,7 +30,7 @@ set(ARG_SOURCES
 )
 
 set(ARG_LIBRARY_PATHS
-        ${Boost_LIBRARIES}  Threads::Threads
+        ${Boost_LIBRARIES}  Threads::Threads fmt::fmt glog::glog
 )
 message (STATUS "Log: main ${PROJECT_NAME}-main")
 add_executable(${PROJECT_NAME}-main ${ARG_SOURCES})
@@ -37,13 +39,14 @@ target_link_libraries(${PROJECT_NAME}-main PUBLIC ${ARG_LIBRARY_PATHS})
 
 
 if (GTEST_FOUND)
-    set(ARG_TESTS tests/iejoin.cpp)
+    set(ARG_TESTS tests/iejoin.cpp tests/merge_join.cpp tests/logical_plan.cpp)
     message (STATUS "Log: unit test ${PROJECT_NAME}-gtest")
     add_executable (${PROJECT_NAME}-gtest ${ARG_TESTS})
     target_include_directories (${PROJECT_NAME}-gtest PUBLIC src)
     target_link_directories(${PROJECT_NAME}-gtest PRIVATE $ENV{CONDA_PREFIX}/lib)
 
     target_link_libraries (${PROJECT_NAME}-gtest
+            ${ARG_LIBRARY_PATHS}
             GTest::GTest
             gmock)
 

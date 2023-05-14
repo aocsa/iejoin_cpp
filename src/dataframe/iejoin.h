@@ -23,6 +23,7 @@ using DataFrame = frame::Dataframe<DataType>;
 using RowArray = DataFrame::RowArray;
 using ColumnArray = DataFrame::ColumnArray;
 using StringArray = std::vector<std::string>;
+using frame::Metadata;
 
 // PrintArray function
 void PrintArray(std::string_view name, const DataFrame &L) {

@@ -6,6 +6,11 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include <iostream>
+#include <vector>
+#include <string>
+#include <map>
+#include <algorithm>
 
 #include "dataframe/dataframe.h"
 #include "dataframe/iejoin.h"
@@ -85,17 +90,15 @@ void distributed_iejoin_sample() {
   }
 }
 
-TEST(MyClassTest, test_west) {
+TEST(IEJoinTest, test_west) {
   test_west();
   EXPECT_EQ(2, 1 + 1);
 }
 
-TEST(MyClassTest, distributed_iejoin_sample) {
+TEST(IEJoinTest, distributed_iejoin_sample) {
   distributed_iejoin_sample();
   EXPECT_EQ(2, 1 + 1);
 }
-
-
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
