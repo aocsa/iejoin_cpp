@@ -9,8 +9,9 @@
 
 #include "record_batch.h"
 #include "schema.h"
+#include "datasource/generator/sequence.h"
 
-namespace datacore {
+namespace datafusionx {
 
 class ColumnVector;
 
@@ -20,7 +21,10 @@ class DataSource {
   virtual std::vector<std::shared_ptr<RecordBatch>> scan(
       const std::vector<std::string>& projection) = 0;
 
+  virtual std::vector<Table> read_batches(
+      const std::vector<std::string>& projection) = 0;
+
   virtual std::string toString() = 0;
 };
 
-}  // namespace datacore
+}  // namespace datafusionx

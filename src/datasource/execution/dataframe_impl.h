@@ -4,7 +4,7 @@
 #include "datasource/logical_expr.h"
 #include "std/core.hpp"
 
-namespace datacore {
+namespace datafusionx {
 
 class DataFrame {
  public:
@@ -51,4 +51,4 @@ class DataFrameImpl : public DataFrame {
   std::shared_ptr<LogicalPlan> logicalPlan() override { return plan; }
 };
 
-}  // namespace datacore
+}  // namespace datafusionx

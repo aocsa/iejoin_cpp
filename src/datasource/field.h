@@ -3,7 +3,9 @@
 #include <std/core.hpp>
 #include "arrow_types.h"
 
-namespace datacore {
+#include <parquet/types.h>
+
+namespace datafusionx {
 
 #define DEFAULT_CONSTRUCTOR(ClassName) \
   ClassName() = default;               \
@@ -39,6 +41,35 @@ struct Field {
   std::string name;
   ArrowType dataType;
   Field(std::string name, ArrowType dataType) : name(name), dataType(dataType) {}
+  Field(std::string name, parquet::Type::type dataType) : name(name){
+
+    // switch data type from parquet to arrowType
+    switch (dataType) {
+      case parquet::Type::BOOLEAN:
+        this->dataType = ArrowType::BOOL;
+        break;
+      case parquet::Type::INT32:
+        this->dataType = ArrowType::INT32;
+        break;
+      case parquet::Type::INT64:
+        this->dataType = ArrowType::INT64;
+        break;
+      case parquet::Type::DOUBLE:
+        this->dataType = ArrowType::DOUBLE;
+        break;
+      case parquet::Type::FLOAT:
+        this->dataType = ArrowType::FLOAT;
+        break;
+      case parquet::Type::BYTE_ARRAY:
+        this->dataType = ArrowType::STRING;
+        break;
+      case parquet::Type::FIXED_LEN_BYTE_ARRAY:
+        this->dataType = ArrowType::STRING;
+        break;
+      default:
+        throw std::invalid_argument("Invalid ParquetType");
+    }
+  }
 
   DEFAULT_CONSTRUCTOR(Field)
   DEFAULT_ASSIGNMENT(Field)

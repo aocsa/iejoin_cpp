@@ -10,12 +10,14 @@
 #include <string>
 
 #include <boost/dynamic_bitset.hpp>
+#include <deque>
 #include <functional>
 #include <iostream>
 #include <map>
 #include <string>
 #include <tuple>
 #include <vector>
+#include "utils/pprint.h"
 
 using DataType = int;
 
@@ -26,16 +28,16 @@ using StringArray = std::vector<std::string>;
 using frame::Metadata;
 
 // PrintArray function
-void PrintArray(std::string_view name, const DataFrame &L) {
+void PrintArray(std::string_view name, const DataFrame& L) {
   std::cout << name << ":" << std::endl;
   std::cout << L << std::endl;
 }
 
 // PrintArray function
 template <typename Container>
-void PrintArray(std::string_view name, const Container &L) {
+void PrintArray(std::string_view name, const Container& L) {
   std::cout << name << ":" << std::endl;
-  for (const auto &row : L) {
+  for (const auto& row : L) {
     std::cout << row << " ";
   }
   std::cout << std::endl;
@@ -53,40 +55,38 @@ enum kOperator {
 std::function<bool(DataType, DataType)> get_operator_fn(const kOperator op) {
   // return a lambda function that takes two ints and returns a bool
   switch (op) {
-  case kLess:
-    return [](DataType a, DataType b) { return a < b; };
-  case kLessEqual:
-    return [](DataType a, DataType b) { return a <= b; };
-  case kGreater:
-    return [](DataType a, DataType b) { return a > b; };
-  case kGreaterEqual:
-    return [](DataType a, DataType b) { return a >= b; };
-  case kEqual:
-    return [](DataType a, DataType b) { return a == b; };
-  case kNotEqual:
-    return [](DataType a, DataType b) { return a != b; };
-  default:
-    throw std::runtime_error("Unknown operator");
+    case kLess:
+      return [](DataType a, DataType b) { return a < b; };
+    case kLessEqual:
+      return [](DataType a, DataType b) { return a <= b; };
+    case kGreater:
+      return [](DataType a, DataType b) { return a > b; };
+    case kGreaterEqual:
+      return [](DataType a, DataType b) { return a >= b; };
+    case kEqual:
+      return [](DataType a, DataType b) { return a == b; };
+    case kNotEqual:
+      return [](DataType a, DataType b) { return a != b; };
+    default:
+      throw std::runtime_error("Unknown operator");
   }
 }
 
 struct Predicate {
-  std::string operator_ref;
-  kOperator operator_name;
+  std::string predicate_id;
+  kOperator operator_type;
   std::string lhs;
   std::string rhs;
 
-  std::function<bool(DataType, DataType)> condition() const {
-    return get_operator_fn(operator_name);
+  std::function<bool(DataType, DataType)> condition_fn() const {
+    return get_operator_fn(operator_type);
   }
 };
 
 // create a view  and the <iota | view>
-DataFrame ArrayOf(const DataFrame &table, const StringArray &cols) {
+DataFrame Project(const DataFrame& table, const StringArray& cols) {
   // Project the predicate columns and a row id as tuples: (rid, X, ...)
-  DataFrame result = DataFrame::create_empty_dataframe(table.num_rows());
-  // Add a row id column
-  result.create_row_index();
+  DataFrame result = DataFrame::make_empty(table.num_rows());
 
   for (auto col_name : cols) {
     auto index = table.col_index(col_name);
@@ -97,7 +97,7 @@ DataFrame ArrayOf(const DataFrame &table, const StringArray &cols) {
   return result;
 }
 
-void Mark(DataFrame &L) {
+void Mark(DataFrame& L) {
   // Add a marked column that will become P
   // [ ... P]
   std::vector<DataFrame::DataType> p_values;
@@ -108,26 +108,24 @@ void Mark(DataFrame &L) {
   L.insert("p", p_values);
 }
 
-ColumnArray ExtractColumn(const DataFrame &table, const int &column) {
+ColumnArray ExtractColumn(const DataFrame& table, const int& column) {
   return table.get_column(column);
 }
 
-std::vector<std::tuple<int, int>> LoopJoin(const DataFrame &left,
-                                           const DataFrame &right,
-                                           const std::vector<Predicate> &preds,
+std::vector<std::tuple<int, int>> LoopJoin(const DataFrame& left, const DataFrame& right,
+                                           const std::vector<Predicate>& preds,
                                            int trace = 0) {
   std::vector<std::tuple<int, int>> result;
 
   for (size_t i = 0; i < left.num_rows(); i++) {
     for (size_t j = 0; j < right.num_rows(); j++) {
-      const RowArray &left_row = left.get_row(i);
-      const RowArray &right_row = right.get_row(j);
+      const RowArray& left_row = left.get_row(i);
+      const RowArray& right_row = right.get_row(j);
       bool matching = true;
-      for (const Predicate &pred : preds) {
+      for (const Predicate& pred : preds) {
         auto left_row_index = left.col_index(pred.lhs);
         auto right_row_index = right.col_index(pred.rhs);
-        if (!pred.condition()(left_row[left_row_index],
-                              right_row[right_row_index])) {
+        if (!pred.condition_fn()(left_row[left_row_index], right_row[right_row_index])) {
           matching = false;
           break;
         }
@@ -137,67 +135,65 @@ std::vector<std::tuple<int, int>> LoopJoin(const DataFrame &left,
         //        assert(left.col_index("row_index") == 0);
         //        assert(right.col_index("row_index") == 0);
         result.emplace_back(left_row[0],
-                            right_row[0]); // get id from column row_index
+                            right_row[0]);  // get id from column row_index
       }
     }
   }
   return result;
 }
 
-// implement a hash-join algorithm for two tables
-// TODO: improve api... this algorithm assumes that the first column is the id
-std::vector<std::tuple<int, int>> HashJoin(const DataFrame &left, // should be a ColumnArray??
-                                           const DataFrame &right,
-                                           const std::vector<Predicate> &preds,
-                                           int trace = 0) {
-  std::unordered_map<int, RowArray> hashMap;
-  for (size_t i = 0; i < left.num_rows(); i++) {
-    const RowArray &left_row = left.get_row(i);
-    auto lhs_id = left_row[0];
-    hashMap[lhs_id] = left_row;
-  }
-  std::vector<std::tuple<int, int>> result;
-  for (size_t i = 0; i < right.num_rows(); i++) {
-    const RowArray &right_row = right.get_row(i);
-    auto rhs_id = right_row[0];
-    if (hashMap.find(rhs_id) != hashMap.end()) {
-      result.emplace_back(hashMap[rhs_id][0], rhs_id);
-    }
-  }
-  return result;
-}
+// // implement a hash-join algorithm for two tables
+// // TODO: improve api... this algorithm assumes that the first column is the id
+// std::vector<std::tuple<int, int>> HashJoin(const DataFrame &left, // should be a
+// ColumnArray??
+//                                            const DataFrame &right,
+//                                            const std::vector<Predicate> &preds,
+//                                            int trace = 0) {
+//   std::unordered_map<int, RowArray> hashMap;
+//   for (size_t i = 0; i < left.num_rows(); i++) {
+//     const RowArray &left_row = left.get_row(i);
+//     auto lhs_id = left_row[0];
+//     hashMap[lhs_id] = left_row;
+//   }
+//   std::vector<std::tuple<int, int>> result;
+//   for (size_t i = 0; i < right.num_rows(); i++) {
+//     const RowArray &right_row = right.get_row(i);
+//     auto rhs_id = right_row[0];
+//     if (hashMap.find(rhs_id) != hashMap.end()) {
+//       result.emplace_back(hashMap[rhs_id][0], rhs_id);
+//     }
+//   }
+//   return result;
+// }
 
-std::vector<std::pair<int, int>> IESelfJoin(const DataFrame &T,
-                                            const std::vector<Predicate> &preds,
+std::vector<std::pair<int, int>> IESelfJoin(const DataFrame& T,
+                                            const std::vector<Predicate>& preds,
                                             int trace = 0) {
-  auto op1 = preds[0].condition();
+  auto op1 = preds[0].condition_fn();
   auto X = preds[0].lhs;
 
-  auto op2 = preds[1].condition();
+  auto op2 = preds[1].condition_fn();
   auto Y = preds[1].lhs;
   int n = T.num_rows();
-  auto op_name1 = preds[0].operator_name;
-  auto op_name2 = preds[1].operator_name;
+  auto op_name1 = preds[0].operator_type;
+  auto op_name2 = preds[1].operator_type;
 
   // 1. let L1 (resp. L2) be the array of column X (resp. Y )
-  DataFrame L = ArrayOf(T, {X, Y});
+  DataFrame L = Project(T, {X, Y});
 
   // L:  [[0, 100, 6], [1, 140, 11], [2, 80, 10], [3, 90, 5]]
-  if (trace)
-    PrintArray("L", L);
+  if (trace) PrintArray("L", L);
 
   // 2. if (op1 ∈ {>, ≥}) sort L1 in descending order
   // 3.  else if (op1 ∈ {<, ≤}) sort L1 in ascending order
-  bool descending1 = (op_name1 == kOperator::kGreater) ||
-                     (op_name1 == kOperator::kGreaterEqual);
+  bool descending1 =
+      (op_name1 == kOperator::kGreater) || (op_name1 == kOperator::kGreaterEqual);
   L = L.sort_by(X, descending1);
-  if (trace)
-    PrintArray("sortLx", L);
+  if (trace) PrintArray("sortLx", L);
   ColumnArray L1 = ExtractColumn(L, 1);
 
   Mark(L);
-  if (trace)
-    PrintArray("L", L);
+  if (trace) PrintArray("L", L);
 
   assert(L.col_index("row_index") == 0);
   auto Li = ExtractColumn(L, 0);
@@ -208,8 +204,7 @@ std::vector<std::pair<int, int>> IESelfJoin(const DataFrame &T,
       (op_name2 == kOperator::kLess) || (op_name2 == kOperator::kLessEqual);
 
   L = L.sort_by(Y, descending2);
-  if (trace)
-    PrintArray("sortLY", L);
+  if (trace) PrintArray("sortLY", L);
 
   ColumnArray L2 = ExtractColumn(L, 2);
 
@@ -277,7 +272,7 @@ std::vector<std::pair<int, int>> IESelfJoin(const DataFrame &T,
   return join_result;
 }
 
-std::vector<int> OffsetArray(const ColumnArray &L, const ColumnArray &Lr,
+std::vector<int> OffsetArray(const ColumnArray& L, const ColumnArray& Lr,
                              std::function<bool(DataType, DataType)> op) {
   std::vector<int> O(L.size(), Lr.size());
   size_t l_ = 0;
@@ -293,14 +288,46 @@ std::vector<int> OffsetArray(const ColumnArray &L, const ColumnArray &Lr,
   return O;
 }
 
-std::vector<std::pair<int, int>> IEJoin(const DataFrame &T, const DataFrame &Tr,
-                                        const std::vector<Predicate> &preds,
+void join_lists(int n, int m, const std::vector<int>& Li, const std::vector<int>& Lk,
+                const std::vector<int>& L2, const std::vector<int>& L_2,
+                const std::vector<int>& O1, const std::vector<int>& P,
+                const std::vector<int>& Pr, bool (*op2)(int, int),
+                std::vector<std::pair<int, int>>& join_result) {
+  boost::dynamic_bitset<> B(n);
+
+  int off2 = 0;
+  for (int i = 0; i < m; ++i) {
+    while (off2 < n) {
+      if (not op2(L2[i], L_2[off2])) {
+        break;
+      }
+      B.set(Pr[off2], true);
+      off2 += 1;
+    }
+    int pos = P[i];
+    int off1 = O1[pos];
+
+    while (true) {
+      int k = B.find_next(off1 - 1);
+
+      if (k >= n or k == -1) {
+        break;
+      }
+      auto t = std::make_pair(Li[i], Lk[k]);
+      join_result.emplace_back(t);
+      off1 = k + 1;
+    }
+  }
+}
+
+std::vector<std::pair<int, int>> IEJoin(const DataFrame& T, const DataFrame& Tr,
+                                        const std::vector<Predicate>& preds,
                                         int trace = 0) {
-  auto op1 = preds[0].condition();
+  auto op1 = preds[0].condition_fn();
   auto X = preds[0].lhs;
   auto Xr = preds[0].rhs;
 
-  auto op2 = preds[1].condition();
+  auto op2 = preds[1].condition_fn();
   auto Y = preds[1].lhs;
   auto Yr = preds[1].rhs;
 
@@ -312,19 +339,18 @@ std::vector<std::pair<int, int>> IEJoin(const DataFrame &T, const DataFrame &Tr,
               << "m:" << m << std::endl;
   }
 
-  auto op_name1 = preds[0].operator_name;
-  auto op_name2 = preds[1].operator_name;
+  auto op_name1 = preds[0].operator_type;
+  auto op_name2 = preds[1].operator_type;
 
   /////////////////////////////
-  DataFrame L = ArrayOf(T, {X, Y});
-  DataFrame Lr = ArrayOf(Tr, {Xr, Yr});
-  bool descending1 = (op_name1 == kOperator::kGreater) ||
-                     (op_name1 == kOperator::kGreaterEqual);
+  DataFrame L = Project(T, {X, Y});
+  DataFrame Lr = Project(Tr, {Xr, Yr});
+  bool descending1 =
+      (op_name1 == kOperator::kGreater) || (op_name1 == kOperator::kGreaterEqual);
   L = L.sort_by(X, descending1);
   ColumnArray L1 = ExtractColumn(L, 1);
 
-  if (trace)
-    PrintArray("L1:", L1);
+  if (trace) PrintArray("L1:", L1);
 
   Mark(L);
   ////////////////////////////////
@@ -332,16 +358,13 @@ std::vector<std::pair<int, int>> IEJoin(const DataFrame &T, const DataFrame &Tr,
   ColumnArray Lr1 = ExtractColumn(Lr, 1);
   Mark(Lr);
 
-  if (trace)
-    PrintArray("Lr1:", Lr1);
+  if (trace) PrintArray("Lr1:", Lr1);
 
   ////////////////////////////////
-  bool descending2 =
-      (op_name2 == kOperator::kLess || op_name2 == kOperator::kLessEqual);
+  bool descending2 = (op_name2 == kOperator::kLess || op_name2 == kOperator::kLessEqual);
   L = L.sort_by(Y, descending2);
   auto L2 = ExtractColumn(L, 2);
-  if (trace)
-    PrintArray("L2:", L2);
+  if (trace) PrintArray("L2:", L2);
 
   ////////////////////////////////
   assert(L.col_index("row_index") == 0);
@@ -350,8 +373,7 @@ std::vector<std::pair<int, int>> IEJoin(const DataFrame &T, const DataFrame &Tr,
 
   Lr = Lr.sort_by(Yr, descending2);
   auto L_2 = ExtractColumn(Lr, 2);
-  if (trace)
-    PrintArray("L_2:", L_2);
+  if (trace) PrintArray("L_2:", L_2);
 
   auto P = ExtractColumn(L, 3);
   auto Pr = ExtractColumn(Lr, 3);
@@ -426,13 +448,13 @@ void test_iejoin_employees(std::string_view filename) {
   //    auto filter_df = employees.filter(logical_expr);
 }
 
-DataFrame transform(const std::vector<std::map<std::string, int>> &data) {
+DataFrame transform(const std::vector<std::map<std::string, int>>& data) {
   DataFrame table;
 
   std::vector<std::string> header;
-  for (const auto &row_data : data) {
+  for (const auto& row_data : data) {
     std::vector<DataType> values;
-    for (const auto &[key, value] : row_data) {
+    for (const auto& [key, value] : row_data) {
       header.push_back(key);
       values.push_back(value);
     }
@@ -451,36 +473,28 @@ bool has_intersection_values(int min_1, int max_1, int min_2, int max_2) {
 
 struct Partition {
   int id;
-  std::unordered_map<std::string, Metadata> metadata;
+  Metadata metadata_x;
+  Metadata metadata_y;
 };
 
-bool has_intersection(const Metadata &min_max_1, const Metadata &min_max_2) {
+bool has_intersection(const Metadata& min_max_1, const Metadata& min_max_2) {
   return has_intersection_values(min_max_1.min, min_max_1.max, min_max_2.min,
                                  min_max_2.max);
 }
 
-std::vector<std::pair<int, int>>
-virtual_cross_join_eq(std::vector<Partition> &lhs, std::vector<Partition> &rhs,
-                      std::string X, std::string Y, bool trace = 1) {
-  std::cerr << "virtual_cross_join: " << rhs.size() << " x " << lhs.size()
-            << "\n";
+std::vector<std::pair<int, int>> virtual_cross_join_eq(std::vector<Partition>& lhs,
+                                                       std::vector<Partition>& rhs,
+                                                       std::string X, std::string Y,
+                                                       bool trace = 1) {
   std::vector<std::pair<int, int>> result;
-  for (auto &lhs_metadata : lhs) {
-    for (auto &rhs_metadata : rhs) {
-
-      std::cout << "(" << lhs_metadata.metadata[X].min << " - "
-                << lhs_metadata.metadata[X].max << ") | ("
-                << lhs_metadata.metadata[Y].min << " - "
-                << lhs_metadata.metadata[Y].max << ")\n";
-
-      if (has_intersection(lhs_metadata.metadata[X],
-                           rhs_metadata.metadata[Y]) or
-          has_intersection(lhs_metadata.metadata[X],
-                           rhs_metadata.metadata[Y])) {
+  for (auto& lhs_metadata : lhs) {
+    for (auto& rhs_metadata : rhs) {
+      if (has_intersection(lhs_metadata.metadata_x, rhs_metadata.metadata_y) and
+          has_intersection(lhs_metadata.metadata_x, rhs_metadata.metadata_y)) {
         std::pair<int, int> t(lhs_metadata.id, rhs_metadata.id);
         if (trace) {
-          std::cout << "has_intersection>> (" << std::get<0>(t) << ", "
-                    << std::get<1>(t) << ")\n";
+          std::cout << "has_intersection>> (" << std::get<0>(t) << ", " << std::get<1>(t)
+                    << ")\n";
         }
         result.push_back(t);
       }
@@ -489,22 +503,20 @@ virtual_cross_join_eq(std::vector<Partition> &lhs, std::vector<Partition> &rhs,
   return result;
 }
 
-std::vector<std::pair<int, int>>
-virtual_cross_join(std::vector<Partition> &lhs, std::vector<Partition> &rhs,
-                   std::string X, std::string Y, bool trace = 1) {
-  std::cerr << "virtual_cross_join: " << rhs.size() << " x " << lhs.size()
-            << "\n";
+std::vector<std::pair<int, int>> virtual_cross_join(std::vector<Partition>& lhs,
+                                                    std::vector<Partition>& rhs,
+                                                    std::string X, std::string Y,
+                                                    bool trace = 1) {
+  std::cerr << "virtual_cross_join: " << rhs.size() << " x " << lhs.size() << "\n";
   std::vector<std::pair<int, int>> result;
-  for (auto &lhs_metadata : lhs) {
-    for (auto &rhs_metadata : rhs) {
-      if (has_intersection(lhs_metadata.metadata[X],
-                           rhs_metadata.metadata[X]) or
-          has_intersection(lhs_metadata.metadata[Y],
-                           rhs_metadata.metadata[Y])) {
-        std::pair<int, int> t(lhs_metadata.id, rhs_metadata.id);
+  for (auto& left : lhs) {
+    for (auto& right : rhs) {
+      if (has_intersection(left.metadata_x, right.metadata_x) and
+          has_intersection(left.metadata_y, right.metadata_y)) {
+        std::pair<int, int> t(left.id, right.id);
         if (trace) {
-          std::cout << "has_intersection>> (" << std::get<0>(t) << ", "
-                    << std::get<1>(t) << ")\n";
+          std::cout << "has_intersection>> (" << std::get<0>(t) << ", " << std::get<1>(t)
+                    << ")\n";
         }
         result.push_back(t);
       }
@@ -513,116 +525,235 @@ virtual_cross_join(std::vector<Partition> &lhs, std::vector<Partition> &rhs,
   return result;
 }
 
-std::vector<std::pair<int, int>>
-ScalableIEJoin(const DataFrame &left, const DataFrame &right,
-               const std::vector<Predicate> &preds, int trace = 0) {
-  auto op1 = preds[0].condition();
+void PrintMinMaxMetadata(std::vector<Partition>& lhs, std::vector<Partition>& rhs,
+                         std::string X, std::string Y) {
+  for (auto& lhs_metadata : lhs) {
+    for (auto& rhs_metadata : rhs) {
+      // Print partition
+      // std::cout << "Partition: " << col_name << "|" << min << "," << max << std::endl;
+
+      std::cout << "(" << lhs_metadata.metadata_x.min << " - "
+                << lhs_metadata.metadata_x.max << ") | (" << lhs_metadata.metadata_y.min
+                << " - " << lhs_metadata.metadata_y.max << ")\n";
+    }
+  }
+}
+
+auto CreateBatches(DataFrame& df) {
+  static constexpr size_t kBucketSize = 1000;
+
+  int num_parts =
+      df.num_rows() > kBucketSize ? static_cast<int>(df.num_rows() / kBucketSize) : 2;
+  return df.partition(num_parts);
+}
+
+// compute min_max values
+Metadata min_max_on_sorted_column(DataFrame& df, std::string col_name) {
+  Metadata result;
+  auto index = df.col_index(col_name);
+  auto c = df.get_column(index);
+  assert(c.size() > 0);
+  auto min = c[0];
+  auto max = c[c.size() - 1];
+  return Metadata{.col_name = col_name, .min = min, .max = max};
+}
+
+Metadata min_max_on_unsorted_column(DataFrame& df, std::string col_name) {
+  Metadata result;
+  auto index = df.col_index(col_name);
+  auto c = df.get_column(index);
+  assert(c.size() > 0);
+  auto min = *std::min_element(c.begin(), c.end());
+  auto max = *std::max_element(c.begin(), c.end());
+  return Metadata{.col_name = col_name, .min = min, .max = max};
+}
+
+std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSortAndSample(
+    const DataFrame& left, const DataFrame& right, const std::vector<Predicate>& preds,
+    int trace = 0) {
   auto X = preds[0].lhs;
-
-  auto op2 = preds[1].condition();
   auto Y = preds[1].lhs;
-  auto op_name1 = preds[0].operator_name;
-  auto op_name2 = preds[1].operator_name;
 
   // insert row_index column to both dataframes
-  auto lhs = ArrayOf(left, {X, Y});
-  auto rhs = ArrayOf(right, {X, Y});
+  auto lhs = Project(left, {X, Y});
+  auto rhs = Project(right, {X, Y});
 
-  // why do we need to sort?
-  lhs = lhs.sort_by(X);
-  rhs = rhs.sort_by(Y);
+  auto lsh_parts = CreateBatches(lhs);
+  auto rhs_parts = CreateBatches(rhs);
+  auto lhs_num_parts = lsh_parts.size();
+  auto rhs_num_parts = rhs_parts.size();
 
-  // optimize partition sort
-  const float kBucketSize = 1000;
-  int lhs_num_parts = lhs.num_rows() > kBucketSize
-                          ? static_cast<int>(lhs.num_rows() / kBucketSize)
-                          : 2;
-  int rhs_num_parts = rhs.num_rows() > kBucketSize
-                          ? static_cast<int>(rhs.num_rows() / kBucketSize)
-                          : 2;
-  auto lsh_parts = lhs.partition(lhs_num_parts);
-  auto rhs_parts = rhs.partition(rhs_num_parts);
+  auto generate_min_max_metadata = [](std::vector<DataFrame>& batches,
+                                      std::string join_key) {
+    DataFrame samples;
+    samples.column_paste(batches[0].column_names());
+    for (auto& batch : batches) {
+      auto join_key_col = Project(batch, {join_key});
+      size_t n_samples = (size_t)(std::ceil(join_key_col.num_rows() * 0.1));
+      samples.concat_line(join_key_col.sample(n_samples));
+    }
+    samples.sort_by(join_key);
+    auto partition_plan = samples.sample(batches.size());
+    return partition_plan[join_key];
+  };
+  auto partition_plan_x_tmp = generate_min_max_metadata(lsh_parts, X);
+  auto partition_plan_y_tmp = generate_min_max_metadata(rhs_parts, Y);
 
+  std::deque<int> partition_plan_x(partition_plan_x_tmp.begin(),
+                                   partition_plan_x_tmp.end());
+  std::deque<int> partition_plan_y(partition_plan_y_tmp.begin(),
+                                   partition_plan_y_tmp.end());
+
+  // push front the minimum value for x
+  partition_plan_x.push_front(std::numeric_limits<int>::min());
+  // push back the maximum value for x
+  partition_plan_x.push_back(std::numeric_limits<int>::max());
+
+  assert(lhs_num_parts == partition_plan_x.size() - 2);
   std::vector<Partition> partitions_lhs;
   for (int i = 0; i < lhs_num_parts; ++i) {
+    auto min = i < 1 ? partition_plan_x[0] : partition_plan_x[i - 1];
+    auto max = partition_plan_x[i];
+
+    auto metadata_x = Metadata{.col_name = X, .min = min, .max = max};
+    auto metadata_y = min_max_on_unsorted_column(lsh_parts[i], Y);
     partitions_lhs.emplace_back(
-        Partition{.id = i, .metadata = lsh_parts[i].min_max({X, Y})});
+        Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
   }
 
   std::vector<Partition> partitions_rhs;
   for (int i = 0; i < rhs_num_parts; ++i) {
+    auto metadata_x = min_max_on_unsorted_column(rhs_parts[i], X);
+    auto metadata_y = min_max_on_sorted_column(rhs_parts[i], Y);
     partitions_rhs.emplace_back(
-        Partition{.id = i, .metadata = rhs_parts[i].min_max({X, Y})});
+        Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
   }
-
+  PrintMinMaxMetadata(partitions_lhs, partitions_rhs, X, Y);
   std::vector<std::pair<int, int>> result;
   auto cross_join_result =
       virtual_cross_join(partitions_lhs, partitions_rhs, X, Y, trace);
-  std::cout << "cross_join_result.sz: " << cross_join_result.size()
-            << std::endl;
+  std::cout << "cross_join_result.sz: " << cross_join_result.size() << std::endl;
   for (int index = 0; index < cross_join_result.size(); index++) {
     auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
-    auto expected = IEJoin(lsh_parts[lhs_part_index], rhs_parts[rhs_part_index],
-                           preds, trace);
-    for (const auto &[x, y] : expected) {
+    std::cout << "partition: [ " << lhs_part_index << "," << rhs_part_index << "]"
+              << std::endl;
+    auto expected =
+        IEJoin(lsh_parts[lhs_part_index], rhs_parts[rhs_part_index], preds, trace);
+    for (const auto& [x, y] : expected) {
+      // std::cerr << "expected: (" << x << ", " << y << ")\n";
       result.emplace_back(std::make_pair(x, y));
     }
   }
+  // materialize results
   return result;
 }
 
-std::vector<std::pair<int, int>> ScalableLoopJoin(const DataFrame &left,
-                                                  const DataFrame &right,
-                                                  Predicate &pred,
-                                                  int trace = 0) {
-  auto op1 = pred.condition();
-  auto X = pred.lhs;
-  auto Y = pred.rhs;
-  auto op_name1 = pred.operator_name;
+std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSort(
+    const DataFrame& left, const DataFrame& right, const std::vector<Predicate>& preds,
+    int trace = 0) {
+  auto op1 = preds[0].condition_fn();
+  auto X = preds[0].lhs;
+
+  auto op2 = preds[1].condition_fn();
+  auto Y = preds[1].lhs;
+  auto op_name1 = preds[0].operator_type;
+  auto op_name2 = preds[1].operator_type;
 
   // insert row_index column to both dataframes
-  auto lhs = ArrayOf(left, {X, Y});
-  auto rhs = ArrayOf(right, {X, Y});
+  auto lhs = Project(left, {X, Y});
+  auto rhs = Project(right, {X, Y});
 
-  // why do we need to sort? so we can apply hash join
-  //  lhs = lhs.sort_by(X);
-  //  rhs = rhs.sort_by(Y);
+  lhs = lhs.sort_by(X);
+  rhs = rhs.sort_by(Y);
 
-  // optimize partition sort
-  const float kBucketSize = 1000;
-  int lhs_num_parts = lhs.num_rows() > kBucketSize
-                          ? static_cast<int>(lhs.num_rows() / kBucketSize)
-                          : 2;
-  int rhs_num_parts = rhs.num_rows() > kBucketSize
-                          ? static_cast<int>(rhs.num_rows() / kBucketSize)
-                          : 2;
-  auto lsh_parts = lhs.partition(lhs_num_parts);
-  auto rhs_parts = rhs.partition(rhs_num_parts);
+  auto lsh_parts = CreateBatches(lhs);
+  auto rhs_parts = CreateBatches(rhs);
+  auto lhs_num_parts = lsh_parts.size();
+  auto rhs_num_parts = rhs_parts.size();
 
   std::vector<Partition> partitions_lhs;
   for (int i = 0; i < lhs_num_parts; ++i) {
+    auto metadata_x = min_max_on_sorted_column(lsh_parts[i], X);
+    auto metadata_y = min_max_on_unsorted_column(lsh_parts[i], Y);
     partitions_lhs.emplace_back(
-        Partition{.id = i, .metadata = lsh_parts[i].min_max({X, Y})});
+        Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
   }
 
   std::vector<Partition> partitions_rhs;
   for (int i = 0; i < rhs_num_parts; ++i) {
+    auto metadata_x = min_max_on_unsorted_column(rhs_parts[i], X);
+    auto metadata_y = min_max_on_sorted_column(rhs_parts[i], Y);
     partitions_rhs.emplace_back(
-        Partition{.id = i, .metadata = rhs_parts[i].min_max({X, Y})});
+        Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
   }
 
+  PrintMinMaxMetadata(partitions_lhs, partitions_rhs, X, Y);
   std::vector<std::pair<int, int>> result;
   auto cross_join_result =
-      virtual_cross_join_eq(partitions_lhs, partitions_rhs, X, Y, trace);
-  std::cout << "cross_join_result.sz: " << cross_join_result.size()
-            << std::endl;
+      virtual_cross_join(partitions_lhs, partitions_rhs, X, Y, trace);
+  std::cout << "cross_join_result.sz: " << cross_join_result.size() << std::endl;
   for (int index = 0; index < cross_join_result.size(); index++) {
     auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
-    auto expected = LoopJoin(lsh_parts[lhs_part_index],
-                             rhs_parts[rhs_part_index], {pred}, trace);
-    for (const auto &[x, y] : expected) {
+    std::cout << "partition: [ " << lhs_part_index << "," << rhs_part_index << "]"
+              << std::endl;
+    auto expected =
+        IEJoin(lsh_parts[lhs_part_index], rhs_parts[rhs_part_index], preds, trace);
+    for (const auto& [x, y] : expected) {
+      // std::cerr << "expected: (" << x << ", " << y << ")\n";
       result.emplace_back(std::make_pair(x, y));
     }
   }
+  // materialize results
   return result;
 }
+
+// std::vector<std::pair<int, int>> ScalableLoopJoin(const DataFrame &left,
+//                                                   const DataFrame &right,
+//                                                   Predicate &pred,
+//                                                   int trace = 0) {
+//   auto op1 = pred.condition_fn();
+//   auto X = pred.lhs;
+//   auto Y = pred.rhs;
+//   auto op_name1 = pred.operator_type;
+
+//   // insert row_index column to both dataframes
+//   auto lhs = Project(left, {X, Y});
+//   auto rhs = Project(right, {X, Y});
+
+//   // why do we need to sort? so we can apply hash join
+//   //  lhs = lhs.sort_by(X);
+//   //  rhs = rhs.sort_by(Y);
+
+//   // optimize partition sort
+//   auto lsh_parts = CreateBatches(lhs);
+//   auto rhs_parts = CreateBatches(rhs);
+//   auto lhs_num_parts = lsh_parts.size();
+//   auto rhs_num_parts = rhs_parts.size();
+
+//   std::vector<Partition> partitions_lhs;
+//   for (int i = 0; i < lhs_num_parts; ++i) {
+//     partitions_lhs.emplace_back(
+//         Partition{.id = i, .metadata = min_max(lsh_parts[i], {X, Y})});
+//   }
+
+//   std::vector<Partition> partitions_rhs;
+//   for (int i = 0; i < rhs_num_parts; ++i) {
+//     partitions_rhs.emplace_back(
+//         Partition{.id = i, .metadata = min_max(rhs_parts[i], {X, Y})});
+//   }
+
+//   std::vector<std::pair<int, int>> result;
+//   auto cross_join_result =
+//       virtual_cross_join_eq(partitions_lhs, partitions_rhs, X, Y, trace);
+//   std::cout << "cross_join_result.sz: " << cross_join_result.size()
+//             << std::endl;
+//   for (int index = 0; index < cross_join_result.size(); index++) {
+//     auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
+//     auto expected = LoopJoin(lsh_parts[lhs_part_index],
+//                              rhs_parts[rhs_part_index], {pred}, trace);
+//     for (const auto &[x, y] : expected) {
+//       result.emplace_back(std::make_pair(x, y));
+//     }
+//   }
+//   return result;
+// }

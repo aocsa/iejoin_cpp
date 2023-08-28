@@ -6,7 +6,7 @@
 #include "datasource/logical_expr.h"
 #include "std/core.hpp"
 
-namespace datacore {
+namespace datafusionx {
 class ExecutionContext {
  private:
   std::map<std::string, std::string> settings;
@@ -53,4 +53,4 @@ class ExecutionContext {
   }
 };
 
-}  // namespace datacore
+}  // namespace datafusionx

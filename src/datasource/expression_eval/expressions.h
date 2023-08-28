@@ -4,7 +4,7 @@
 #include "datasource/logical_expr.h"
 #include "std/core.hpp"
 
-namespace datacore {
+namespace datafusionx {
 
 // Conversion helper functions
 std::string toString(const VariantType& v);
@@ -60,8 +60,8 @@ class BooleanExpression : public Expression {
     auto ll = l->evaluate(input);
     auto rr = r->evaluate(input);
     if (ll->getType() != rr->getType()) {
-      throw std::logic_error(
-          "Cannot compare values of different type: " + arrowTypeToString(ll->getType()) +
+      std::cerr << (
+          "maybe cannot compare values of different type: " + arrowTypeToString(ll->getType()) +
           " != " + arrowTypeToString(rr->getType()));
     }
     return compare(ll, rr);
@@ -194,4 +194,4 @@ bool toBool(const VariantType& v) {
   }
 }
 
-}  // namespace datacore
+}  // namespace datafusionx

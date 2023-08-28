@@ -3,12 +3,12 @@
 #include "arrow_types.h"
 #include "dataframe/dataframe.h"
 
-namespace datacore {
+namespace datafusionx {
 
 using frame::VariantType;
-using RawDataFrame = frame::Dataframe<frame::VariantType>;
-using RowArray = RawDataFrame::RowArray;
-using ColumnArray = RawDataFrame::ColumnArray;
+using Table = frame::Dataframe<frame::VariantType>;
+using RowArray = Table::RowArray;
+using ColumnArray = Table::ColumnArray;
 
 ArrowType get_field_type(VariantType value);
 std::string to_string(VariantType value);
@@ -17,6 +17,7 @@ class ColumnVector {
  public:
   virtual ArrowType getType() = 0;
   virtual VariantType getValue(int i) = 0;
+  virtual ColumnArray columnArray() = 0;
   virtual int size() = 0;
 };
 
@@ -29,6 +30,10 @@ class ArrowFieldVector : public ColumnVector {
   }
   virtual VariantType getValue(int i) override { return column_array[i]; }
   virtual int size() override { return column_array.size(); }
+
+  virtual ColumnArray columnArray() override {
+    return column_array; 
+  }
 
 public:
   ColumnArray column_array;
@@ -46,6 +51,12 @@ class LiteralValueVector : public ColumnVector {
   virtual VariantType getValue(int i) override { return value; }
   virtual int size() override { return num_rows; }
 
+  virtual ColumnArray columnArray() override {
+    ColumnArray result(size());
+    result.fill(value);
+    return result; 
+  }
+
  private:
   ArrowType dtype;
   VariantType value;
@@ -59,10 +70,10 @@ ArrowType get_field_type(VariantType value) {
     return ArrowType::INT32;
   } else if (std::holds_alternative<long int>(value)) {
     return ArrowType::INT64;
-  } else if (std::holds_alternative<double>(value)) {
-    return ArrowType::DOUBLE;
   } else if (std::holds_alternative<float>(value)) {
     return ArrowType::FLOAT;
+  } else if (std::holds_alternative<double>(value)) {
+    return ArrowType::DOUBLE;
   } else if (std::holds_alternative<std::string>(value)) {
     return ArrowType::STRING;
   } else {
@@ -89,4 +100,4 @@ std::string to_string(VariantType value) {
     }
 }
 
-}  // namespace datacore
+}  // namespace datafusionx

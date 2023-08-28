@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <random>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -236,6 +237,12 @@ class Dataframe {
     }
 
     [[maybe_unused]] std::vector<T>& get_std_vector() { return *array; }
+
+    void fill(T value) {
+      for (auto& item : *array) {
+        item = value;
+      }
+    }
 
     template <typename OutputType>
     std::vector<OutputType> get_as() {
@@ -474,11 +481,13 @@ class Dataframe {
     }
   }
 
-  static Dataframe<T> create_empty_dataframe(size_t length) {
+  static Dataframe<T> make_empty(size_t length) {
     Dataframe<T> df;
     df.length = length;
+    df.create_row_index();
     return df;
   }
+
 
   Dataframe_iter begin() { return matrix.begin(); }
 
@@ -735,7 +744,7 @@ class Dataframe {
   }
 
   // partition the Dataframe in n parts
-  std::vector<Dataframe<DataType>> partition(size_t n) {
+  std::vector<Dataframe<DataType>> partition(size_t n)  {
     std::vector<Dataframe<DataType>> dataframes;
     if (n > 0) {
       size_t part = length / n;
@@ -760,6 +769,23 @@ class Dataframe {
     return dataframes;
   }
 
+  // sample dataframe 
+  Dataframe<DataType> sample(size_t n) {
+    Dataframe<DataType> dataframe;
+    dataframe.column_paste(this->column_names());
+    std::vector<size_t> index;
+    for (size_t i = 0; i < length; ++i) {
+      index.emplace_back(i);
+    }
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(index.begin(), index.end(), g);
+    for (size_t i = 0; i < n; ++i) {
+      dataframe.append(this->get_row(index[i]).get_std_vector());
+    }
+    return dataframe;
+  }
+
   // sort dataframe by x column
   Dataframe sort_by(std::string column_name, bool descending = false) const {
     Dataframe dataframe;
@@ -779,20 +805,6 @@ class Dataframe {
       dataframe.append(this->get_row(item.second).get_std_vector());
     }
     return dataframe;
-  }
-
-  // compute min_max values
-  std::unordered_map<std::string, Metadata> min_max(
-      const std::vector<std::string>& columns) {
-    std::unordered_map<std::string, Metadata> result;
-    for (auto col_name : columns) {
-      auto index = this->col_index(col_name);
-      auto c = this->get_column(index);
-      auto min = *std::min_element(c.begin(), c.end());
-      auto max = *std::max_element(c.begin(), c.end());
-      result[col_name] = Metadata{.col_name = col_name, .min = min, .max = max};
-    }
-    return result;
   }
 
   // select columns from Dataframe
@@ -937,7 +949,6 @@ class Dataframe {
     }
     reader.close();
   }
-
   // write into csv file
 
   void to_csv(const char& delimiter = ',') const { to_csv(dataframe_name, delimiter); }
@@ -1223,5 +1234,5 @@ class Dataframe {
   size_t length;
   std::unordered_map<std::string, size_t> index;
 };
-};      // namespace datacore
+};      // namespace datafusionx
 #endif  // Dataframe_H

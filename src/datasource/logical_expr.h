@@ -12,7 +12,7 @@
 #include "datasource/field.h"
 #include "datasource/schema.h"
 
-namespace datacore {
+namespace datafusionx {
 // Forward declaration of LogicalPlan
 
 // Define LogicalPlan interface
@@ -332,4 +332,8 @@ public:
     }
 };
 
-}  // namespace datacore
+class Join : public LogicalPlan {
+  
+};
+
+}  // namespace datafusionx

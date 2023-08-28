@@ -6,7 +6,7 @@
 #include "datasource/logical_expr.h"
 #include "std/core.hpp"
 
-namespace datacore {
+namespace datafusionx {
 
 class PhysicalPlan;
 
@@ -279,4 +279,4 @@ class QueryPlanner {
   }
 };
 
-}  // namespace datacore
+}  // namespace datafusionx

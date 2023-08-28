@@ -68,13 +68,11 @@ void distributed_iejoin_sample() {
   std::vector<int> s_x = {0, 2, 3, 1};
   std::vector<int> s_y = {0, 1, 7, 8};
 
-  DataFrame R = DataFrame::create_empty_dataframe(r_x.size());
-  R.create_row_index();
+  DataFrame R = DataFrame::make_empty(r_x.size());
   R.insert("x", r_x);
   R.insert("y", r_y);
 
-  DataFrame S = DataFrame::create_empty_dataframe(s_x.size());
-  S.create_row_index();
+  DataFrame S = DataFrame::make_empty(s_x.size());
   S.insert("x", s_x);
   S.insert("y", s_y);
 
@@ -82,7 +80,7 @@ void distributed_iejoin_sample() {
                                   {"op2", kOperator::kGreater, "y", "y"}};
 
   //  auto expected = IEJoin(R, S, preds ,1);
-  auto expected = ScalableIEJoin(R, S, preds, 1);
+  auto expected = ScalableIEJoinUsingGlobalSort(R, S, preds, 1);
 
   std::cerr << "ScalableIEJoin.sz: " << expected.size() << std::endl;
   for (const auto &[l, r] : expected) {

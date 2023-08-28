@@ -14,7 +14,7 @@
 #include "read_csv.h"
 
 struct Predicate {
-  std::string operator_name;
+  std::string operator_type;
   std::function<bool(int, int)> op_function;
   std::string lhs;
   std::string rhs;
@@ -36,7 +36,7 @@ std::vector<int> ExtractColumn(const IntTable &table, const int &column) {
   return result;
 }
 
-IntTable ArrayOf(
+IntTable Project(
     const Table &table, const ColumnNames &cols,
     Identifier identifier = [](int rid) { return rid; }) {
   // Project the predicate columns and a row id as tuples: (rid, X, ...)
@@ -142,16 +142,16 @@ void PrintArray(std::string_view name, const std::vector<int> &L) {
 std::vector<std::pair<int, int>>
 IESelfJoin(const Table &T, const std::vector<Predicate> &preds, int trace = 0) {
   auto op1 = preds[0].op_function;
-  auto op_name1 = preds[0].operator_name;
+  auto op_name1 = preds[0].operator_type;
   auto X = preds[0].lhs;
 
   auto op2 = preds[1].op_function;
-  auto op_name2 = preds[1].operator_name;
+  auto op_name2 = preds[1].operator_type;
   auto Y = preds[1].lhs;
   int n = T.size();
 
   // 1. let L1 (resp. L2) be the array of column X (resp. Y )
-  IntTable L = ArrayOf(T, {X, Y});
+  IntTable L = Project(T, {X, Y});
 
   // L:  [[0, 100, 6], [1, 140, 11], [2, 80, 10], [3, 90, 5]]
   if (trace)

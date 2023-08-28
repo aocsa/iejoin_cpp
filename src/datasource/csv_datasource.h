@@ -3,13 +3,13 @@
 #include "datasource.h"
 #include "std/core.hpp"
 
-namespace datacore {
+namespace datafusionx {
 
 struct CsvParserSettings {
   char delimiter;
 };
 
-std::vector<RawDataFrame> read_csv(std::string_view filename, const char& delimiter = ',',
+std::vector<Table> read_csv(std::string_view filename, const char& delimiter = ',',
                                    int batch_size = -1);
 
 Schema read_csv_header(std::string_view filename, const char& delimiter = ',');
@@ -49,6 +49,7 @@ class CsvDataSource : public DataSource {
 
   Schema schema() const override { return finalSchema; }
 
+  // TODO: use Sequences instead of std::vector<std::shared_ptr<RecordBatch>>
   std::vector<std::shared_ptr<RecordBatch>> scan(
       const std::vector<std::string>& projection) override {
     std::ifstream file(filename);
@@ -80,6 +81,18 @@ class CsvDataSource : public DataSource {
     return result;
   }
 
+
+  std::vector<Table> read_batches(const std::vector<std::string>& projection) override {
+    auto batches =  scan(projection);
+    std::vector<Table> result;
+    result.reserve(batches.size());
+    for(auto& batch : batches) {
+      auto table = batch->toTable();
+      result.emplace_back(table);
+    }
+    return result;
+  }
+
   std::string toString() override {
       std::stringstream ss;
       ss << "CsvDataSource(" << filename << ")";
@@ -88,7 +101,7 @@ class CsvDataSource : public DataSource {
 };
 
 Schema read_csv_header(std::string_view filename, const char& delimiter) {
-  std::vector<RawDataFrame> dataframes;
+  std::vector<Table> Tables;
   std::ifstream reader(filename.data());
   if (!reader) {
     throw(std::invalid_argument(filename.data() + std::string(" is invalid!")));
@@ -101,7 +114,7 @@ Schema read_csv_header(std::string_view filename, const char& delimiter) {
     }
   }
 
-  RawDataFrame df;
+  Table df;
   df.column_paste(column_names);
   std::vector<std::string> value_str_vector;
   int count = 0;
@@ -128,9 +141,9 @@ Schema read_csv_header(std::string_view filename, const char& delimiter) {
 // read from csv file
 // batch_size: Rows to read; -1 is all
 // skip_rows: Rows to skip from the start
-std::vector<RawDataFrame> read_csv(std::string_view filename, const char& delimiter,
+std::vector<Table> read_csv(std::string_view filename, const char& delimiter,
                                    int batch_size) {
-  std::vector<RawDataFrame> dataframes;
+  std::vector<Table> Tables;
   std::ifstream reader(filename.data());
   if (!reader) {
     throw(std::invalid_argument(filename.data() + std::string(" is invalid!")));
@@ -143,7 +156,7 @@ std::vector<RawDataFrame> read_csv(std::string_view filename, const char& delimi
     }
   }
 
-  std::shared_ptr<RawDataFrame> df = std::make_shared<RawDataFrame>();
+  std::shared_ptr<Table> df = std::make_shared<Table>();
   df->column_paste(column_names);
   std::vector<std::string> value_str_vector;
   int count = 0;
@@ -154,17 +167,17 @@ std::vector<RawDataFrame> read_csv(std::string_view filename, const char& delimi
       count++;
     }
     if (count == batch_size) {
-      dataframes.emplace_back(*df);
-      df = std::make_shared<RawDataFrame>();
+      Tables.emplace_back(*df);
+      df = std::make_shared<Table>();
       df->column_paste(column_names);
       count = 0;
     }
   }
   if (df->num_rows() > 0) {
-    dataframes.emplace_back(*df);
+    Tables.emplace_back(*df);
   }
   reader.close();
-  return dataframes;
+  return Tables;
 }
 
 // separate strings by delimiter
@@ -189,4 +202,4 @@ bool splite_line(const std::string& str_line, std::vector<std::string>& value_st
   return flag;
 }
 
-}  // namespace datacore
+}  // namespace datafusionx

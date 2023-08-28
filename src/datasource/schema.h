@@ -2,7 +2,7 @@
 #include <std/core.hpp>
 #include "field.h"
 
-namespace datacore {
+namespace datafusionx {
 
 // Define Schema class
 struct Schema {
@@ -20,6 +20,22 @@ struct Schema {
       projectedFields.push_back(fields.at(index));
     }
     return Schema(projectedFields);
+  }
+
+  std::vector<std::string> columnNames() const {
+    std::vector<std::string> names;
+    for (const auto& field : fields) {
+      names.push_back(field.name);
+    }
+    return names;
+  }
+
+  std::vector<ArrowType> columnTypes() const {
+    std::vector<ArrowType> types;
+    for (const auto& field : fields) {
+      types.push_back(field.dataType);
+    }
+    return types;
   }
 
   // Select schema fields by name
@@ -55,4 +71,4 @@ struct Schema {
   }
 };
 
-}  // namespace datacore
+}  // namespace datafusionx

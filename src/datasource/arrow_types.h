@@ -1,7 +1,7 @@
 #pragma once
 
 // Define ArrowType enum
-namespace datacore {
+namespace datafusionx {
     enum class ArrowType { 
         INT32,   // 32-bit integer
         INT64,   // 64-bit integer
@@ -10,4 +10,5 @@ namespace datacore {
         STRING,  // UTF-8 encoded string
         BOOL     // Boolean value
     };
+    
 }
