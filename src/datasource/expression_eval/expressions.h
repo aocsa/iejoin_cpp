@@ -7,9 +7,9 @@
 namespace datafusionx {
 
 // Conversion helper functions
-std::string toString(const VariantType& v);
+std::string toString(const DataType& v);
 
-bool toBool(const VariantType& v);
+bool toBool(const DataType& v);
 
 // Interface for a physical expression
 class Expression {
@@ -21,7 +21,7 @@ class Expression {
 
 class LiteralExpression : public Expression {
  public:
-  LiteralExpression(VariantType value) : value(value) {}
+  LiteralExpression(DataType value) : value(value) {}
 
   std::shared_ptr<ColumnVector> evaluate(
       const std::shared_ptr<RecordBatch>& input) override {
@@ -32,7 +32,7 @@ class LiteralExpression : public Expression {
   std::string toString() override { return to_string(value); }
 
  private:
-  VariantType value;
+  DataType value;
 };
 
 class ColumnExpression : public Expression {
@@ -67,7 +67,7 @@ class BooleanExpression : public Expression {
     return compare(ll, rr);
   }
 
-  virtual bool evaluate(const VariantType& l, const VariantType& r,
+  virtual bool evaluate(const DataType& l, const DataType& r,
                         const ArrowType& arrowType) = 0;
 
   std::string toString()  override { return "#" + std::string("boolean op"); }
@@ -93,7 +93,7 @@ class AndExpression : public BooleanExpression {
   AndExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return toBool(l) && toBool(r);
   }
@@ -104,7 +104,7 @@ class OrExpression : public BooleanExpression {
   OrExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return toBool(l) || toBool(r);
   }
@@ -118,7 +118,7 @@ class EqExpression : public BooleanExpression {
   EqExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return l == r;
   }
@@ -129,7 +129,7 @@ class NeqExpression : public BooleanExpression {
   NeqExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return l != r;
   }
@@ -140,7 +140,7 @@ class LtExpression : public BooleanExpression {
   LtExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return l < r;
   }
@@ -151,7 +151,7 @@ class LtEqExpression : public BooleanExpression {
   LtEqExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return l <= r;
   }
@@ -162,7 +162,7 @@ class GtExpression : public BooleanExpression {
   GtExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return l > r;
   }
@@ -173,20 +173,18 @@ class GtEqExpression : public BooleanExpression {
   GtEqExpression(std::shared_ptr<Expression> l, std::shared_ptr<Expression> r)
       : BooleanExpression(l, r) {}
 
-  bool evaluate(const VariantType& l, const VariantType& r,
+  bool evaluate(const DataType& l, const DataType& r,
                 const ArrowType& arrowType) override {
     return l >= r;
   }
 };
 
 // Conversion helper functions
-std::string toString(const VariantType& v) { return to_string(v); }
+std::string toString(const DataType& v) { return to_string(v); }
 
-bool toBool(const VariantType& v) {
+bool toBool(const DataType& v) {
   if (std::holds_alternative<char>(v)) {
     return std::get<char>(v);
-  } else if (std::holds_alternative<int>(v)) {
-    return std::get<int>(v) == 1;
   } else if (std::holds_alternative<long int>(v)) {
     return std::get<long int>(v) == 1;
   } else {

@@ -71,7 +71,6 @@ std::shared_ptr<Column> col(std::string name) {
   return std::make_shared<Column>(std::move(name));
 }
 
-
 // Define ColumnIndex class
 class ColumnIndex : public LogicalExpr {
  public:
@@ -79,33 +78,41 @@ class ColumnIndex : public LogicalExpr {
 
   Field toField(const std::shared_ptr<LogicalPlan>& input) const override {
     if (index < 0 || index >= input->schema().fields.size()) {
-      throw std::invalid_argument("Column index " + std::to_string(index) + " out of range");
+      throw std::invalid_argument("Column index " + std::to_string(index) +
+                                  " out of range");
     }
     return input->schema().fields[index];
   }
 
   std::string toString() const override { return "#" + std::to_string(index); }
 
-public:
+ public:
   int index;
 };
+
+// Convenience function to create a ColumnIndex reference
+std::shared_ptr<ColumnIndex> col_index(int index) {
+  return std::make_shared<ColumnIndex>(index);
+}
 
 // Define Literal class
 class Literal : public LogicalExpr {
  public:
-  explicit Literal(VariantType value) : value(value) { type = get_field_type(value); }
+  explicit Literal(DataType value) : value(value) { type = get_field_type(value); }
 
-  Field toField(const std::shared_ptr<LogicalPlan>& input) const override { return Field("lit", type); }
+  Field toField(const std::shared_ptr<LogicalPlan>& input) const override {
+    return Field("lit", type);
+  }
 
   std::string toString() const override { return to_string(value); }
 
-public:
-  VariantType value;
+ public:
+  DataType value;
   ArrowType type;
 };
 
 // Convenience function to create a LiteralString
-std::shared_ptr<Literal> lit(VariantType value) {
+std::shared_ptr<Literal> lit(DataType value) {
   return std::make_shared<Literal>(value);
 }
 
@@ -134,9 +141,13 @@ class BooleanBinaryExpr : public BinaryExpr {
                     std::shared_ptr<LogicalExpr> r)
       : BinaryExpr(std::move(name), std::move(op), std::move(l), std::move(r)) {}
 
-  Field toField(const std::shared_ptr<LogicalPlan>& input) const override final { return Field(name_, ArrowType::BOOL); }
+  Field toField(const std::shared_ptr<LogicalPlan>& input) const override final {
+    return Field(name_, ArrowType::BOOL);
+  }
 
-  std::string toString() const override { return "(" + l_->toString() + " " + op_ + " " + r_->toString() + ")"; }
+  std::string toString() const override {
+    return "(" + l_->toString() + " " + op_ + " " + r_->toString() + ")";
+  }
 };
 
 // Define And class
@@ -231,109 +242,231 @@ std::shared_ptr<LtEq> lte(const std::shared_ptr<LogicalExpr>& lhs,
   return std::make_shared<LtEq>(lhs, rhs);
 }
 
-
-
 class Scan : public LogicalPlan {
-public:
-    std::string path;
-    std::shared_ptr<DataSource> dataSource;
-    std::vector<std::string> projection;
-    Schema schema_;
+ public:
+  std::string path;
+  std::shared_ptr<DataSource> dataSource;
+  std::vector<std::string> projection;
+  Schema schema_;
 
-   Schema deriveSchema() {
-       Schema schema = dataSource->schema();
-        if (projection.empty()) {
-            return schema;
-        } else {
-            return schema.select(projection);
-        }
+  Schema deriveSchema() {
+    Schema schema = dataSource->schema();
+    if (projection.empty()) {
+      return schema;
+    } else {
+      return schema.select(projection);
     }
+  }
 
-public:
-    Scan(const std::string& path, std::shared_ptr<DataSource> dataSource, const std::vector<std::string>& projection)
-        : path(path), dataSource(dataSource), projection(projection), schema_(deriveSchema()) {}
+ public:
+  Scan(const std::string& path, std::shared_ptr<DataSource> dataSource,
+       const std::vector<std::string>& projection)
+      : path(path),
+        dataSource(dataSource),
+        projection(projection),
+        schema_(deriveSchema()) {}
 
-    Schema schema() const override {
-        return schema_;
+  Schema schema() const override { return schema_; }
+
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    return std::vector<std::shared_ptr<LogicalPlan>>{};
+  }
+
+  std::string toString() const override {
+    if (projection.empty()) {
+      return "Scan: " + path + "; projection=None";
+    } else {
+      std::string proj = "Scan: " + path + "; projection=";
+      for (const auto& p : projection) {
+        proj += p + " ";
+      }
+      return proj;
     }
-
-    std::vector<std::shared_ptr<LogicalPlan>> children() const override {
-        return std::vector<std::shared_ptr<LogicalPlan>>{};
-    }
-
-    std::string toString() const override {
-        if (projection.empty()) {
-            return "Scan: " + path + "; projection=None";
-        } else {
-            std::string proj = "Scan: " + path + "; projection=";
-            for (const auto& p : projection) {
-                proj += p + " ";
-            }
-            return proj;
-        }
-    }
+  }
 };
-
 
 class Selection : public LogicalPlan {
-public:
-    std::shared_ptr<LogicalPlan> input;
-    std::shared_ptr<LogicalExpr> expr;
+ public:
+  std::shared_ptr<LogicalPlan> input;
+  std::shared_ptr<LogicalExpr> expr;
 
-public:
-    Selection(std::shared_ptr<LogicalPlan> input, std::shared_ptr<LogicalExpr> expr)
-        : input(input), expr(expr) {}
+ public:
+  Selection(std::shared_ptr<LogicalPlan> input, std::shared_ptr<LogicalExpr> expr)
+      : input(input), expr(expr) {}
 
-    Schema schema() const override {
-        return input->schema();
-    }
+  Schema schema() const override { return input->schema(); }
 
-    std::vector<std::shared_ptr<LogicalPlan>> children() const override {
-        // selection does not change the schema of the input
-        return std::vector<std::shared_ptr<LogicalPlan>>{input};
-    }
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    // selection does not change the schema of the input
+    return std::vector<std::shared_ptr<LogicalPlan>>{input};
+  }
 
-    std::string toString() const override {
-        return "Selection: " + expr->toString();
-    }
+  std::string toString() const override { return "Selection: " + expr->toString(); }
 };
-
 
 class Projection : public LogicalPlan {
-public:
-    std::shared_ptr<LogicalPlan> input;
-    std::vector<std::shared_ptr<LogicalExpr>> expr;
+ public:
+  std::shared_ptr<LogicalPlan> input;
+  std::vector<std::shared_ptr<LogicalExpr>> expr;
 
-public:
-    Projection(std::shared_ptr<LogicalPlan> input, std::vector<std::shared_ptr<LogicalExpr>> expr)
-        : input(input), expr(expr) {}
+ public:
+  Projection(std::shared_ptr<LogicalPlan> input,
+             std::vector<std::shared_ptr<LogicalExpr>> expr)
+      : input(input), expr(expr) {}
 
-    Schema schema() const override {
-        std::vector<Field> fields;
-        std::transform(expr.begin(), expr.end(), std::back_inserter(fields),
-            [this](const std::shared_ptr<LogicalExpr>& e) { return e->toField(input); });
-        return Schema(fields);
+  Schema schema() const override {
+    std::vector<Field> fields;
+    std::transform(
+        expr.begin(), expr.end(), std::back_inserter(fields),
+        [this](const std::shared_ptr<LogicalExpr>& e) { return e->toField(input); });
+    return Schema(fields);
+  }
+
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    return std::vector<std::shared_ptr<LogicalPlan>>{input};
+  }
+
+  std::string toString() const override {
+    std::stringstream ss;
+    ss << "Projection: ";
+    for (auto it = expr.begin(); it != expr.end(); ++it) {
+      if (it != expr.begin()) {
+        ss << ", ";
+      }
+      ss << (*it)->toString();
     }
-
-    std::vector<std::shared_ptr<LogicalPlan>> children() const override {
-        return std::vector<std::shared_ptr<LogicalPlan>>{input};
-    }
-
-    std::string toString() const override {
-        std::stringstream ss;
-        ss << "Projection: ";
-        for (auto it = expr.begin(); it != expr.end(); ++it) {
-            if (it != expr.begin()) {
-                ss << ", ";
-            }
-            ss << (*it)->toString();
-        }
-        return ss.str();
-    }
+    return ss.str();
+  }
 };
 
-class Join : public LogicalPlan {
-  
+class LocalSort : public LogicalPlan {
+ public:
+  std::shared_ptr<LogicalPlan> input;
+  std::vector<std::shared_ptr<ColumnIndex>> sort_indices;
+
+ public:
+  LocalSort(std::shared_ptr<LogicalPlan> input,
+                std::initializer_list<std::shared_ptr<ColumnIndex>> sort_indices)
+      : input(input), sort_indices(sort_indices) {}
+
+  Schema schema() const override {
+    return input->schema();
+  }
+
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    return std::vector<std::shared_ptr<LogicalPlan>>{input};
+  }
+
+  std::string toString() const override {
+    std::stringstream ss;
+    ss << "LocalSort: ";
+    for (auto& s : sort_indices) {
+      ss << s->toString() << ", ";
+    }
+    return ss.str();
+  }
+};
+
+class IEJoinMethod3 : public LogicalPlan {
+ public:
+  std::shared_ptr<LogicalPlan> left;
+  std::shared_ptr<LogicalPlan> right;
+  std::shared_ptr<LogicalExpr> join_condition;
+
+ public:
+  IEJoinMethod3(std::shared_ptr<LogicalPlan> left, std::shared_ptr<LogicalPlan> right,
+        std::shared_ptr<LogicalExpr> join_condition)
+      : left(left), right(right), join_condition(join_condition) {}
+
+  Schema schema() const override {
+    return left->schema().merge(right->schema());
+  }
+
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    return std::vector<std::shared_ptr<LogicalPlan>>{left, right};
+  }
+
+  std::string toString() const override {
+    std::stringstream ss;
+    ss << "IEJoinMethod3: " + join_condition->toString();
+    return ss.str();
+  }
+};
+
+class IEJoinMethod2 : public LogicalPlan {
+ public:
+  std::shared_ptr<LogicalPlan> left;
+  std::shared_ptr<LogicalPlan> right;
+  std::shared_ptr<LogicalExpr> join_condition;
+
+ public:
+  IEJoinMethod2(std::shared_ptr<LogicalPlan> left, std::shared_ptr<LogicalPlan> right,
+        std::shared_ptr<LogicalExpr> join_condition)
+      : left(left), right(right), join_condition(join_condition) {}
+
+  Schema schema() const override {
+    return left->schema().merge(right->schema());
+  }
+
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    return std::vector<std::shared_ptr<LogicalPlan>>{left, right};
+  }
+
+  std::string toString() const override {
+    std::stringstream ss;
+    ss << "IEJoinMethod2: " + join_condition->toString();
+    return ss.str();
+  }
+};
+
+class GlobalSort : public LogicalPlan {
+ public:
+  std::shared_ptr<LogicalPlan> input;
+  std::vector<std::shared_ptr<ColumnIndex>> sort_indices;
+
+ public:
+  GlobalSort(std::shared_ptr<LogicalPlan> input,
+       const std::vector<std::shared_ptr<ColumnIndex>>& sort_indices)
+      : input(input), sort_indices(sort_indices) {}
+
+  Schema schema() const override {
+    return input->schema();
+  }
+
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    return std::vector<std::shared_ptr<LogicalPlan>>{input};
+  }
+
+  std::string toString() const override {
+    std::stringstream ss;
+    ss << "GlobalSort: ";
+    return ss.str();
+  }
+};
+
+class Repartition : public LogicalPlan {
+ public:
+  std::shared_ptr<LogicalPlan> input;
+  int n_partitions;
+
+ public:
+  Repartition(std::shared_ptr<LogicalPlan> input,
+       const int & n_partitions)
+      : input(input), n_partitions(n_partitions) {}
+
+  Schema schema() const override {
+    return input->schema();
+  }
+
+  std::vector<std::shared_ptr<LogicalPlan>> children() const override {
+    return std::vector<std::shared_ptr<LogicalPlan>>{input};
+  }
+
+  std::string toString() const override {
+    std::stringstream ss;
+    ss << "Repartition: ";
+    return ss.str();
+  }
 };
 
 }  // namespace datafusionx

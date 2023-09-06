@@ -49,8 +49,8 @@ class CsvDataSource : public DataSource {
 
   Schema schema() const override { return finalSchema; }
 
-  // TODO: use Sequences instead of std::vector<std::shared_ptr<RecordBatch>>
-  std::vector<std::shared_ptr<RecordBatch>> scan(
+  // TODO: use Sequences instead of Sequence
+  Sequence scan(
       const std::vector<std::string>& projection) override {
     std::ifstream file(filename);
     if (!file) {
@@ -68,7 +68,7 @@ class CsvDataSource : public DataSource {
       finalSchema = finalSchema.select(projection);
     }
 
-    std::vector<std::shared_ptr<RecordBatch>> result;
+    Sequence result;
     for (int i = 0; i < batches.size(); i++) {
       std::vector<std::shared_ptr<ColumnVector>> columns;
       for (int col_index = 0; col_index < batches[i].num_cols(); col_index++) {
@@ -114,8 +114,7 @@ Schema read_csv_header(std::string_view filename, const char& delimiter) {
     }
   }
 
-  Table df;
-  df.column_paste(column_names);
+  Table df = Table::make_empty(column_names);
   std::vector<std::string> value_str_vector;
   int count = 0;
   while (std::getline(reader, str_line) and count < 2) {
@@ -143,7 +142,7 @@ Schema read_csv_header(std::string_view filename, const char& delimiter) {
 // skip_rows: Rows to skip from the start
 std::vector<Table> read_csv(std::string_view filename, const char& delimiter,
                                    int batch_size) {
-  std::vector<Table> Tables;
+  std::vector<Table> tables;
   std::ifstream reader(filename.data());
   if (!reader) {
     throw(std::invalid_argument(filename.data() + std::string(" is invalid!")));
@@ -156,28 +155,26 @@ std::vector<Table> read_csv(std::string_view filename, const char& delimiter,
     }
   }
 
-  std::shared_ptr<Table> df = std::make_shared<Table>();
-  df->column_paste(column_names);
+  Table df = Table::make_empty(column_names);
   std::vector<std::string> value_str_vector;
   int count = 0;
   while (std::getline(reader, str_line) && (batch_size == -1 || count < batch_size)) {
     value_str_vector.clear();
     if (splite_line(str_line, value_str_vector, delimiter)) {
-      df->append_from_str(value_str_vector);
+      df.append_from_str(value_str_vector);
       count++;
     }
     if (count == batch_size) {
-      Tables.emplace_back(*df);
-      df = std::make_shared<Table>();
-      df->column_paste(column_names);
+      tables.emplace_back(df);
+      df = Table::make_empty(column_names);
       count = 0;
     }
   }
-  if (df->num_rows() > 0) {
-    Tables.emplace_back(*df);
+  if (df.num_rows() > 0) {
+    tables.emplace_back(df);
   }
   reader.close();
-  return Tables;
+  return tables;
 }
 
 // separate strings by delimiter

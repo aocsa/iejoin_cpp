@@ -15,6 +15,8 @@
 #include "dataframe/dataframe.h"
 #include "dataframe/iejoin.h"
 
+using namespace iejoin;
+
 void test_west() {
   std::vector<std::map<std::string, int>> west_dict = {{{{"row_index", 0},
                                                          {"t_id", 404},
@@ -69,15 +71,15 @@ void distributed_iejoin_sample() {
   std::vector<int> s_y = {0, 1, 7, 8};
 
   DataFrame R = DataFrame::make_empty(r_x.size());
-  R.insert("x", r_x);
-  R.insert("y", r_y);
+  R.insert("x_name", r_x);
+  R.insert("y_name", r_y);
 
   DataFrame S = DataFrame::make_empty(s_x.size());
-  S.insert("x", s_x);
-  S.insert("y", s_y);
+  S.insert("x_name", s_x);
+  S.insert("y_name", s_y);
 
-  std::vector<Predicate> preds = {{"op1", kOperator::kLess, "x", "x"},
-                                  {"op2", kOperator::kGreater, "y", "y"}};
+  std::vector<Predicate> preds = {{"op1", kOperator::kLess, "x_name", "x_name"},
+                                  {"op2", kOperator::kGreater, "y_name", "y_name"}};
 
   //  auto expected = IEJoin(R, S, preds ,1);
   auto expected = ScalableIEJoinUsingGlobalSort(R, S, preds, 1);

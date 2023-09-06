@@ -85,9 +85,9 @@ class ParquetDataSource : public DataSource {
       auto int_array = std::static_pointer_cast<arrow::Int32Array>(column);
       for (int i = 0; i < int_array->length(); i++) {
         if (!int_array->IsNull(i)) {
-          result = int_array->Value(i);
+          result = (long)int_array->Value(i);
         } else {
-          result = std::numeric_limits<int32_t>::min();
+          result = std::numeric_limits<int64_t>::min();
         }
         output_array.emplace_back(result);
       }
@@ -107,9 +107,9 @@ class ParquetDataSource : public DataSource {
       auto float_array = std::static_pointer_cast<arrow::FloatArray>(column);
       for (int i = 0; i < float_array->length(); i++) {
         if (!float_array->IsNull(i)) {
-          result = float_array->Value(i);
+          result = (double)float_array->Value(i);
         } else {
-          result = std::numeric_limits<float>::min();
+          result = std::numeric_limits<double>::min();
         }
         output_array.emplace_back(result);
       }
@@ -150,8 +150,9 @@ class ParquetDataSource : public DataSource {
 
     std::shared_ptr<arrow::RecordBatchReader> batch_reader;
     PARQUET_THROW_NOT_OK(reader->GetRecordBatchReader({0}, &batch_reader));
-    finalSchema = finalSchema.select(projection);
-
+    if (projection.size() > 0) {
+      finalSchema = finalSchema.select(projection);
+    }
     while (true) {
       std::shared_ptr<arrow::RecordBatch> batch;
       if (!batch_reader->ReadNext(&batch).ok() || batch == nullptr) {
@@ -163,12 +164,12 @@ class ParquetDataSource : public DataSource {
         std::shared_ptr<arrow::Array> column = batch->column(i);
         std::string col_name = finalSchema.fields[i].name;
         // is col_name in projection?
-        if (std::ranges::find(projection, col_name) == projection.end()) {
+        if (projection.size() > 0 and std::ranges::find(projection, col_name) == projection.end()) {
           continue;
         }
         auto column_vector = ProcessColumn(column);
 
-        std::cerr <<  column_vector->size() <<  " | ProcessColumn\n";
+//        std::cerr <<  column_vector->size() <<  " | ProcessColumn\n";
 
         fields.emplace_back(column_vector);
       }
@@ -176,7 +177,7 @@ class ParquetDataSource : public DataSource {
       std::cerr << fields.size() <<  " | new_batch\n";
       auto record_batch = std::make_shared<RecordBatch>(finalSchema, fields);
       output.emplace_back(record_batch);
-      std::cerr << "***batch: " << record_batch->toString() << "\n";
+//      std::cerr << "***batch: " << record_batch->toString() << "\n";
     }
     std::cerr << "ReadParquetFileInBatches\n";
     return arrow::Status::OK();

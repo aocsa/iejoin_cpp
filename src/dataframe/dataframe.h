@@ -23,12 +23,6 @@ namespace frame {
 
 using VariantType = std::variant<char, int, long int, float, double, std::string>;
 
-struct Metadata {
-  std::string col_name;
-  long int min;
-  long int max;
-};
-
 template <class... Ts>
 struct overloaded : Ts... {
   using Ts::operator()...;
@@ -155,7 +149,7 @@ class user_stringstream {
 };
 }  // namespace toolbox
 
-template <typename T>
+template <typename T = frame::VariantType>
 class Dataframe {
  public:
   using DataType = T;
@@ -489,6 +483,13 @@ class Dataframe {
   }
 
 
+  static Dataframe<T> make_empty(const string_vector& columns) {
+    Dataframe<T> df;
+    df.column_paste(columns);
+    return df;
+  }
+
+
   Dataframe_iter begin() { return matrix.begin(); }
 
   Dataframe_const_iter begin() const { return matrix.begin(); }
@@ -531,13 +532,13 @@ class Dataframe {
 
   // create a row_index column for this dataframe
   void create_row_index() {
-    if (!contain("row_index")) {
+    if (!contain("id")) {
       ++width;
-      column.emplace_back("row_index");
-      index.emplace("row_index", index.size());
+      column.emplace_back("id");
+      index.emplace("id", index.size());
       std::vector<T> row_index_values;
       row_index_values.reserve(length);
-      for (long int i = 0; i < length; ++i) {
+      for (long  i = 0; i < length; ++i) {
         T value = i;
         row_index_values.push_back(value);
       }
@@ -732,7 +733,7 @@ class Dataframe {
   [[nodiscard]] const size_t& num_rows() const { return length; }
 
   // concat double Dataframe object vertically
-  bool concat_line(const Dataframe& dataframe) {
+  bool merge(const Dataframe& dataframe) {
     if (dataframe.width == width) {
       length += dataframe.length;
       for (size_t i = 0; i < width; ++i) {
@@ -786,11 +787,31 @@ class Dataframe {
     return dataframe;
   }
 
-  // sort dataframe by x column
+  // sort dataframe by x_name column
   Dataframe sort_by(std::string column_name, bool descending = false) const {
     Dataframe dataframe;
     dataframe.column_paste(this->column_names());
     auto index = this->col_index(column_name);
+    auto column = this->get_column(index);
+    std::vector<std::pair<T, size_t>> sort_vector;
+    for (size_t i = 0; i < column.size(); ++i) {
+      sort_vector.emplace_back(column[i], i);
+    }
+    if (descending) {
+      std::sort(sort_vector.begin(), sort_vector.end(), std::greater<>());
+    } else {
+      std::sort(sort_vector.begin(), sort_vector.end(), std::less<>());
+    }
+    for (auto& item : sort_vector) {
+      dataframe.append(this->get_row(item.second).get_std_vector());
+    }
+    return dataframe;
+  }
+
+  Dataframe sort_by(int sort_indice, bool descending = false) const {
+    Dataframe dataframe;
+    dataframe.column_paste(this->column_names());
+    auto index = sort_indice;
     auto column = this->get_column(index);
     std::vector<std::pair<T, size_t>> sort_vector;
     for (size_t i = 0; i < column.size(); ++i) {
@@ -819,7 +840,19 @@ class Dataframe {
     return dataframe;
   }
 
-  // compute cross join for condition x == y
+  // filter Dataframe by condition
+  Dataframe filter(std::function<bool(const RowArray&)> selection_predicate) const {
+      Dataframe dataframe;
+      dataframe.column_paste(this->column_names());
+      for (int i = 0; i < num_rows(); i++) {
+        if (selection_predicate(this->get_row(i))) {
+          dataframe.append(this->get_row(i).get_std_vector());
+        }
+      }
+      return dataframe;
+    }
+
+  // compute cross join for condition x_name == y_name
   Dataframe cross_join(Dataframe& dataframe, std::string x, std::string y) {
     Dataframe result;
     result.column_paste(this->column_names());
@@ -883,8 +916,8 @@ class Dataframe {
     if (!Dataframe1.empty() && !Dataframe2.empty() &&
         Dataframe1.num_cols() == Dataframe2.num_cols()) {
       Dataframe dataframe(Dataframe1.column);
-      dataframe.concat_line(Dataframe1);
-      dataframe.concat_line(Dataframe2);
+      dataframe.merge(Dataframe1);
+      dataframe.merge(Dataframe2);
       dataframe.dataframe_name =
           Dataframe1.dataframe_name + "&" + Dataframe2.dataframe_name;
       return std::move(dataframe);

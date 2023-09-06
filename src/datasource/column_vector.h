@@ -5,18 +5,18 @@
 
 namespace datafusionx {
 
-using frame::VariantType;
 using Table = frame::Dataframe<frame::VariantType>;
+using DataType = Table::DataType;
 using RowArray = Table::RowArray;
 using ColumnArray = Table::ColumnArray;
 
-ArrowType get_field_type(VariantType value);
-std::string to_string(VariantType value);
+ArrowType get_field_type(DataType value);
+std::string to_string(DataType value);
 
 class ColumnVector {
  public:
   virtual ArrowType getType() = 0;
-  virtual VariantType getValue(int i) = 0;
+  virtual DataType getValue(int i) = 0;
   virtual ColumnArray columnArray() = 0;
   virtual int size() = 0;
 };
@@ -28,7 +28,7 @@ class ArrowFieldVector : public ColumnVector {
     assert(size() > 0);
     return get_field_type(getValue(0));
   }
-  virtual VariantType getValue(int i) override { return column_array[i]; }
+  virtual DataType getValue(int i) override { return column_array[i]; }
   virtual int size() override { return column_array.size(); }
 
   virtual ColumnArray columnArray() override {
@@ -41,14 +41,14 @@ public:
 
 class LiteralValueVector : public ColumnVector {
  public:
-  LiteralValueVector(ArrowType dtype, VariantType value, int num_rows)
+  LiteralValueVector(ArrowType dtype, DataType value, int num_rows)
     : dtype(dtype), value(value), num_rows(num_rows)
   {}
 
   virtual ArrowType getType() override {
     return dtype;
   }
-  virtual VariantType getValue(int i) override { return value; }
+  virtual DataType getValue(int i) override { return value; }
   virtual int size() override { return num_rows; }
 
   virtual ColumnArray columnArray() override {
@@ -59,11 +59,11 @@ class LiteralValueVector : public ColumnVector {
 
  private:
   ArrowType dtype;
-  VariantType value;
+  DataType value;
   int num_rows;
 };
 
-ArrowType get_field_type(VariantType value) {
+ArrowType get_field_type(DataType value) {
   if (std::holds_alternative<char>(value)) {
     return ArrowType::BOOL;
   } else if (std::holds_alternative<int>(value)) {
@@ -82,7 +82,7 @@ ArrowType get_field_type(VariantType value) {
   }
 }
 
-std::string to_string(VariantType value) {
+std::string to_string(DataType value) {
     if (std::holds_alternative<char>(value)) {
         return std::to_string(std::get<char>(value));
     } else if (std::holds_alternative<int>(value)) {
@@ -98,6 +98,26 @@ std::string to_string(VariantType value) {
     } else {
         return {}; // or throw an exception or whatever error handling you want
     }
+}
+
+// overload operator << for std::variant
+std::ostream& operator<<(std::ostream& os, const DataType& value) {
+    if (std::holds_alternative<char>(value)) {
+        os << std::get<char>(value);
+    } else if (std::holds_alternative<int>(value)) {
+        os << std::get<int>(value);
+    } else if (std::holds_alternative<long int>(value)) {
+        os << std::get<long int>(value);
+    } else if (std::holds_alternative<double>(value)) {
+        os << std::get<double>(value);
+    } else if (std::holds_alternative<float>(value)) {
+        os << std::get<float>(value);
+    } else if (std::holds_alternative<std::string>(value)) {
+        os << std::get<std::string>(value);
+    } else {
+        os << "Invalid type in variant";
+    }
+    return os;
 }
 
 }  // namespace datafusionx

@@ -38,6 +38,14 @@ struct Schema {
     return types;
   }
 
+  Schema merge(const Schema& other) const {
+    std::vector<Field> mergedFields = fields;
+    for (const auto& field : other.fields) {
+      mergedFields.push_back(field);
+    }
+    return Schema(mergedFields);
+  }
+
   // Select schema fields by name
   Schema select(const std::vector<std::string>& names) const {
     std::vector<Field> selectedFields;

@@ -361,7 +361,7 @@ const delimiters_values<wchar_t> delimiters<::std::tuple<Args...>, wchar_t>::val
 // Type-erasing helper class for easy use of custom delimiters.
 // Requires TCharTraits = std::char_traits<TChar> and TChar = char or wchar_t, and
 // MyDelims needs to be defined for TChar. Usage: "cout <<
-// pretty_print::custom_delims<MyDelims>(x)".
+// pretty_print::custom_delims<MyDelims>(x_name)".
 
 struct custom_delims_base {
   virtual ~custom_delims_base() {}

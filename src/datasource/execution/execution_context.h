@@ -40,12 +40,12 @@ class ExecutionContext {
     register_table(tablename, csv(filename));
   }
 
-  std::vector<std::shared_ptr<RecordBatch>> execute(
+  Sequence execute(
       const std::shared_ptr<DataFrame>& df) {
     return execute(df->logicalPlan());
   }
 
-  std::vector<std::shared_ptr<RecordBatch>> execute(
+  Sequence execute(
       const std::shared_ptr<LogicalPlan>& plan) {
     // auto optimizedPlan = Optimizer().optimize(plan);
     auto physicalPlan = QueryPlanner::createPhysicalPlan(plan);

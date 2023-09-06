@@ -19,13 +19,20 @@
 #include <vector>
 #include "utils/pprint.h"
 
+namespace iejoin{
+  
 using DataType = int;
 
 using DataFrame = frame::Dataframe<DataType>;
 using RowArray = DataFrame::RowArray;
 using ColumnArray = DataFrame::ColumnArray;
 using StringArray = std::vector<std::string>;
-using frame::Metadata;
+
+struct Metadata {
+  std::string col_name;
+  long int min;
+  long int max;
+};
 
 // PrintArray function
 void PrintArray(std::string_view name, const DataFrame& L) {
@@ -367,7 +374,7 @@ std::vector<std::pair<int, int>> IEJoin(const DataFrame& T, const DataFrame& Tr,
   if (trace) PrintArray("L2:", L2);
 
   ////////////////////////////////
-  assert(L.col_index("row_index") == 0);
+  assert(L.col_index("id") == 0);
   auto Li = ExtractColumn(L, 0);
   auto Lk = ExtractColumn(Lr, 0);
 
@@ -507,7 +514,7 @@ std::vector<std::pair<int, int>> virtual_cross_join(std::vector<Partition>& lhs,
                                                     std::vector<Partition>& rhs,
                                                     std::string X, std::string Y,
                                                     bool trace = 1) {
-  std::cerr << "virtual_cross_join: " << rhs.size() << " x " << lhs.size() << "\n";
+  std::cerr << "virtual_cross_join: " << rhs.size() << " x_name " << lhs.size() << "\n";
   std::vector<std::pair<int, int>> result;
   for (auto& left : lhs) {
     for (auto& right : rhs) {
@@ -540,7 +547,7 @@ void PrintMinMaxMetadata(std::vector<Partition>& lhs, std::vector<Partition>& rh
 }
 
 auto CreateBatches(DataFrame& df) {
-  static constexpr size_t kBucketSize = 1000;
+  static constexpr size_t kBucketSize = 10000;
 
   int num_parts =
       df.num_rows() > kBucketSize ? static_cast<int>(df.num_rows() / kBucketSize) : 2;
@@ -558,7 +565,7 @@ Metadata min_max_on_sorted_column(DataFrame& df, std::string col_name) {
   return Metadata{.col_name = col_name, .min = min, .max = max};
 }
 
-Metadata min_max_on_unsorted_column(DataFrame& df, std::string col_name) {
+Metadata min_max(DataFrame& df, std::string col_name) {
   Metadata result;
   auto index = df.col_index(col_name);
   auto c = df.get_column(index);
@@ -568,7 +575,7 @@ Metadata min_max_on_unsorted_column(DataFrame& df, std::string col_name) {
   return Metadata{.col_name = col_name, .min = min, .max = max};
 }
 
-std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSortAndSample(
+std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalLocalSort(
     const DataFrame& left, const DataFrame& right, const std::vector<Predicate>& preds,
     int trace = 0) {
   auto X = preds[0].lhs;
@@ -590,7 +597,7 @@ std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSortAndSample(
     for (auto& batch : batches) {
       auto join_key_col = Project(batch, {join_key});
       size_t n_samples = (size_t)(std::ceil(join_key_col.num_rows() * 0.1));
-      samples.concat_line(join_key_col.sample(n_samples));
+      samples.merge(join_key_col.sample(n_samples));
     }
     samples.sort_by(join_key);
     auto partition_plan = samples.sample(batches.size());
@@ -604,9 +611,9 @@ std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSortAndSample(
   std::deque<int> partition_plan_y(partition_plan_y_tmp.begin(),
                                    partition_plan_y_tmp.end());
 
-  // push front the minimum value for x
+  // push front the minimum value for x_name
   partition_plan_x.push_front(std::numeric_limits<int>::min());
-  // push back the maximum value for x
+  // push back the maximum value for x_name
   partition_plan_x.push_back(std::numeric_limits<int>::max());
 
   assert(lhs_num_parts == partition_plan_x.size() - 2);
@@ -616,15 +623,15 @@ std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSortAndSample(
     auto max = partition_plan_x[i];
 
     auto metadata_x = Metadata{.col_name = X, .min = min, .max = max};
-    auto metadata_y = min_max_on_unsorted_column(lsh_parts[i], Y);
+    auto metadata_y = min_max(lsh_parts[i], Y);
     partitions_lhs.emplace_back(
         Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
   }
 
   std::vector<Partition> partitions_rhs;
   for (int i = 0; i < rhs_num_parts; ++i) {
-    auto metadata_x = min_max_on_unsorted_column(rhs_parts[i], X);
-    auto metadata_y = min_max_on_sorted_column(rhs_parts[i], Y);
+    auto metadata_x = min_max(rhs_parts[i], X);
+    auto metadata_y = min_max(rhs_parts[i], Y);
     partitions_rhs.emplace_back(
         Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
   }
@@ -640,7 +647,7 @@ std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSortAndSample(
     auto expected =
         IEJoin(lsh_parts[lhs_part_index], rhs_parts[rhs_part_index], preds, trace);
     for (const auto& [x, y] : expected) {
-      // std::cerr << "expected: (" << x << ", " << y << ")\n";
+      // std::cerr << "expected: (" << x_name << ", " << y_name << ")\n";
       result.emplace_back(std::make_pair(x, y));
     }
   }
@@ -674,14 +681,81 @@ std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSort(
   std::vector<Partition> partitions_lhs;
   for (int i = 0; i < lhs_num_parts; ++i) {
     auto metadata_x = min_max_on_sorted_column(lsh_parts[i], X);
-    auto metadata_y = min_max_on_unsorted_column(lsh_parts[i], Y);
+    auto metadata_y = min_max(lsh_parts[i], Y);
     partitions_lhs.emplace_back(
         Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
   }
 
   std::vector<Partition> partitions_rhs;
   for (int i = 0; i < rhs_num_parts; ++i) {
-    auto metadata_x = min_max_on_unsorted_column(rhs_parts[i], X);
+    auto metadata_x = min_max(rhs_parts[i], X);
+    auto metadata_y = min_max_on_sorted_column(rhs_parts[i], Y);
+    partitions_rhs.emplace_back(
+        Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
+  }
+
+//  PrintMinMaxMetadata(partitions_lhs, partitions_rhs, X, Y);
+  std::vector<std::pair<int, int>> result;
+  auto cross_join_result =
+      virtual_cross_join(partitions_lhs, partitions_rhs, X, Y, trace);
+  std::cout << "cross_join_result.sz: " << cross_join_result.size() << std::endl;
+  size_t left_sz = 0;
+  size_t right_sz = 0;
+
+  for (int index = 0; index < cross_join_result.size(); index++) {
+    auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
+    std::cout << "partition: [ " << lhs_part_index << "," << rhs_part_index << "]"
+              << std::endl;
+    auto expected =
+        IEJoin(lsh_parts[lhs_part_index], rhs_parts[rhs_part_index], preds, trace);
+    for (const auto& [x, y] : expected) {
+      // std::cerr << "expected: (" << x_name << ", " << y_name << ")\n";
+      result.emplace_back(std::make_pair(x, y));
+    }
+    left_sz += lsh_parts[lhs_part_index].num_rows();
+    right_sz += rhs_parts[rhs_part_index].num_rows();
+  }
+  std::cerr <<  " IEJOIN( " << left_sz << " x " << right_sz << ")" << std::endl;
+
+  // materialize results
+  return result;
+}
+
+std::vector<std::pair<int, int>> ScalableLoopJoin(const DataFrame &left,
+                                                  const DataFrame &right,
+                                                  std::vector<Predicate> &preds,
+                                                  int trace = 0) {
+  auto op1 = preds[0].condition_fn();
+  auto X = preds[0].lhs;
+
+  auto op2 = preds[1].condition_fn();
+  auto Y = preds[1].lhs;
+  auto op_name1 = preds[0].operator_type;
+  auto op_name2 = preds[1].operator_type;
+
+  // insert row_index column to both dataframes
+  auto lhs = Project(left, {X, Y});
+  auto rhs = Project(right, {X, Y});
+
+  lhs = lhs.sort_by(X);
+  rhs = rhs.sort_by(Y);
+
+  auto lsh_parts = CreateBatches(lhs);
+  auto rhs_parts = CreateBatches(rhs);
+  auto lhs_num_parts = lsh_parts.size();
+  auto rhs_num_parts = rhs_parts.size();
+
+  std::vector<Partition> partitions_lhs;
+  for (int i = 0; i < lhs_num_parts; ++i) {
+    auto metadata_x = min_max_on_sorted_column(lsh_parts[i], X);
+    auto metadata_y = min_max(lsh_parts[i], Y);
+    partitions_lhs.emplace_back(
+        Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
+  }
+
+  std::vector<Partition> partitions_rhs;
+  for (int i = 0; i < rhs_num_parts; ++i) {
+    auto metadata_x = min_max(rhs_parts[i], X);
     auto metadata_y = min_max_on_sorted_column(rhs_parts[i], Y);
     partitions_rhs.emplace_back(
         Partition{.id = i, .metadata_x = metadata_x, .metadata_y = metadata_y});
@@ -691,69 +765,70 @@ std::vector<std::pair<int, int>> ScalableIEJoinUsingGlobalSort(
   std::vector<std::pair<int, int>> result;
   auto cross_join_result =
       virtual_cross_join(partitions_lhs, partitions_rhs, X, Y, trace);
-  std::cout << "cross_join_result.sz: " << cross_join_result.size() << std::endl;
+  std::cout << "cross_join_result.sz: " << cross_join_result.size()
+            << std::endl;
   for (int index = 0; index < cross_join_result.size(); index++) {
     auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
-    std::cout << "partition: [ " << lhs_part_index << "," << rhs_part_index << "]"
-              << std::endl;
-    auto expected =
-        IEJoin(lsh_parts[lhs_part_index], rhs_parts[rhs_part_index], preds, trace);
-    for (const auto& [x, y] : expected) {
-      // std::cerr << "expected: (" << x << ", " << y << ")\n";
+    auto expected = LoopJoin(lsh_parts[lhs_part_index],
+                             rhs_parts[rhs_part_index], preds, trace);
+    for (const auto &[x, y] : expected) {
       result.emplace_back(std::make_pair(x, y));
     }
   }
-  // materialize results
   return result;
 }
 
-// std::vector<std::pair<int, int>> ScalableLoopJoin(const DataFrame &left,
-//                                                   const DataFrame &right,
-//                                                   Predicate &pred,
-//                                                   int trace = 0) {
-//   auto op1 = pred.condition_fn();
-//   auto X = pred.lhs;
-//   auto Y = pred.rhs;
-//   auto op_name1 = pred.operator_type;
 
-//   // insert row_index column to both dataframes
-//   auto lhs = Project(left, {X, Y});
-//   auto rhs = Project(right, {X, Y});
+std::vector<std::pair<int, int>> ScalableLoopJoin(const DataFrame &left,
+                                                  const DataFrame &right,
+                                                  Predicate &pred,
+                                                  int trace = 0) {
+  auto op1 = pred.condition_fn();
+  auto X = pred.lhs;
+  auto Y = pred.rhs;
+  auto op_name1 = pred.operator_type;
 
-//   // why do we need to sort? so we can apply hash join
-//   //  lhs = lhs.sort_by(X);
-//   //  rhs = rhs.sort_by(Y);
+  // insert row_index column to both dataframes
+  auto lhs = Project(left, {X, Y});
+  auto rhs = Project(right, {X, Y});
 
-//   // optimize partition sort
-//   auto lsh_parts = CreateBatches(lhs);
-//   auto rhs_parts = CreateBatches(rhs);
-//   auto lhs_num_parts = lsh_parts.size();
-//   auto rhs_num_parts = rhs_parts.size();
+  // why do we need to sort? so we can apply hash join
+  //  lhs = lhs.sort_by(X);
+  //  rhs = rhs.sort_by(Y);
 
-//   std::vector<Partition> partitions_lhs;
-//   for (int i = 0; i < lhs_num_parts; ++i) {
-//     partitions_lhs.emplace_back(
-//         Partition{.id = i, .metadata = min_max(lsh_parts[i], {X, Y})});
-//   }
+  // optimize partition sort
+  auto lsh_parts = CreateBatches(lhs);
+  auto rhs_parts = CreateBatches(rhs);
+  auto lhs_num_parts = lsh_parts.size();
+  auto rhs_num_parts = rhs_parts.size();
 
-//   std::vector<Partition> partitions_rhs;
-//   for (int i = 0; i < rhs_num_parts; ++i) {
-//     partitions_rhs.emplace_back(
-//         Partition{.id = i, .metadata = min_max(rhs_parts[i], {X, Y})});
-//   }
+  std::vector<Partition> partitions_lhs;
+  for (int i = 0; i < lhs_num_parts; ++i) {
+    partitions_lhs.emplace_back(
+        Partition{.id = i, .metadata_x = min_max(lsh_parts[i], X), .metadata_y = min_max(lsh_parts[i], Y)});
+  }
 
-//   std::vector<std::pair<int, int>> result;
-//   auto cross_join_result =
-//       virtual_cross_join_eq(partitions_lhs, partitions_rhs, X, Y, trace);
-//   std::cout << "cross_join_result.sz: " << cross_join_result.size()
-//             << std::endl;
-//   for (int index = 0; index < cross_join_result.size(); index++) {
-//     auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
-//     auto expected = LoopJoin(lsh_parts[lhs_part_index],
-//                              rhs_parts[rhs_part_index], {pred}, trace);
-//     for (const auto &[x, y] : expected) {
-//       result.emplace_back(std::make_pair(x, y));
-//     }
-//   }
-//   return result;
-// }
+  std::vector<Partition> partitions_rhs;
+  for (int i = 0; i < rhs_num_parts; ++i) {
+    partitions_rhs.emplace_back(
+        Partition{.id = i, .metadata_x = min_max(rhs_parts[i], X), .metadata_y = min_max(rhs_parts[i], Y)});
+  }
+
+  std::vector<std::pair<int, int>> result;
+  auto cross_join_result =
+      virtual_cross_join_eq(partitions_lhs, partitions_rhs, X, Y, trace);
+  std::cout << "cross_join_result.sz: " << cross_join_result.size()
+            << std::endl;
+  for (int index = 0; index < cross_join_result.size(); index++) {
+    auto [lhs_part_index, rhs_part_index] = cross_join_result[index];
+    auto expected = LoopJoin(lsh_parts[lhs_part_index],
+                             rhs_parts[rhs_part_index], {pred}, trace);
+    for (const auto &[x, y] : expected) {
+      result.emplace_back(std::make_pair(x, y));
+    }
+  }
+  return result;
+}
+
+
+}

@@ -18,7 +18,7 @@ class ColumnVector;
 class DataSource {
  public:
   virtual Schema schema() const = 0;
-  virtual std::vector<std::shared_ptr<RecordBatch>> scan(
+  virtual Sequence scan(
       const std::vector<std::string>& projection) = 0;
 
   virtual std::vector<Table> read_batches(

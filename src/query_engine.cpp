@@ -21,12 +21,15 @@ int main() {
   const auto csv_file_path = "/Users/aocsa/git/iejoin/employees10k.csv";
 
   // create a plan to represent the data source
-  // auto data_source = std::make_shared<CsvDataSource>(csv_file_path, std::nullopt, true, 1000);
-  auto data_source = std::make_shared<ParquetDataSource>(parquet_file_path);
+  auto data_source = std::make_shared<CsvDataSource>(csv_file_path, std::nullopt, true, 1000);
+  // auto data_source = std::make_shared<ParquetDataSource>(parquet_file_path);
 
   // create a plan to represent the scan of the data source (FROM)
   std::vector<std::string> emptyList;
   auto scan_plan = std::make_shared<Scan>("employee", data_source, emptyList);  
+
+  // QUERY:
+  // SELECT * from employee WHERE salary < 500 OR tax = 99640
 
   // create a plan to represent the selection (WHERE)
   auto salary_filter_expression = std::make_shared<Lt>(col("salary"), lit(500L));
@@ -39,7 +42,6 @@ int main() {
   auto query_plan = std::make_shared<Projection>(selection_plan, projection_columns);  
 
   
-
   auto physicalPlan = QueryPlanner::createPhysicalPlan(query_plan);
   std::cerr << physicalPlan->pretty() << std::endl;
 
